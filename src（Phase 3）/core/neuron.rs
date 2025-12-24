@@ -71,7 +71,7 @@ impl HTPNeuron {
 
         // 4. [Proof Generation]: 生成推理证明
         // 随机抽取一个维度的路径作为“解释性证明”
-        // 在 Crystal Brain 中，这代表模型“为什么”得出这个结论的逻辑链
+        // 在 Evolutionary Neural System 中，这代表模型“为什么”得出这个结论的逻辑链
         let proof_coord = memory_guard.map_id_to_coord(0); // 示例：取 0 号位的解释
         let proof_path = memory_guard.get_segment_tree_path(&proof_coord, 0);
         
