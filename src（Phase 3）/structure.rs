@@ -1,4 +1,3 @@
-// src/phase3/structure.rs
 // COPYRIGHT (C) 2025 M-Patek. ALL RIGHTS RESERVED.
 
 use crate::core::affine::AffineTuple;
