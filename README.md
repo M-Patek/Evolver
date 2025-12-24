@@ -1,88 +1,105 @@
-# Evolver
-### (Hyper-Tensor Protocol for Neuro-Symbolic Interpretability)
+# Evolver: The Evolutionary Neural System Architecture
+**(Hyper-Tensor Protocol for Neuro-Symbolic Generative AI)**
+
 > "From Probabilistic Guessing to Algebraic Proof."
 
----
-
-## 📖 愿景 (Vision)
-Evolver 是对人工智能底层逻辑的一次重构尝试。它不满足于 Transformer 架构中“黑盒”式的概率拟合，而是致力于构建一个完全可解释、可溯源、且具备生物学合理性的范式。
-
-我们不仅仅是在消除噪声，而是在语义的噪声中寻找数学上的无限精确性。我们将神经网络从“在向量海中检索”的旧范式，推进到 **“在代数轨道上实时生成”** 的新纪元。
+We are not just eliminating hallucinations; we are constructing the guardrails of thought using number theory.
 
 ---
 
-## 🏗️ 核心架构 (The New Paradigm)
-Evolver 建立在 **Hyper-Tensor Protocol (HTP)** 的数学原语之上，利用 **类群代数 (Class Group Algebra)** 和 **非交换演化** 来模拟人类认知的动态过程。
+## 📖 Core Vision
+Evolver aims to reconstruct the underlying logic of artificial intelligence through the **Hyper-Tensor Protocol (HTP)**. We abandon the black-box probabilistic fitting inherent in the Transformer architecture in favor of a fully interpretable and traceable "**Evolutionary Neural System**."
 
-### 1. 分形语义代数 (Fractal Semantic Algebra)
-* **无限递归与精确 (Infinite Recursion & Precision)：**
-    我们承认“语义残留” (Semantic Residue) 的必然性。就像人脑无法完全剥离“苹果”的生物学属性一样，Evolver 允许背景噪声存在，但通过维度折叠 (Folding) 和 无限递归，在高维的长节中精确锁定当前上下文所需的“科技向量”。
-* **非交换演化 (Non-Commutative Evolution)：**
-    引入时间与深度的概念：  
-    $$S_{out} = S_{in}^{P_{context}} \cdot G^{H(depth)} \pmod \Delta$$  
-    这意味着信息的处理顺序决定了最终的状态，从根本上杜绝了上下文的混淆。
-
-### 2. 全息坍缩与高维词根 (Holographic Collapse)
-* **超越 KV Cache：**
-    不同于 Transformer 必须线形扫描所有历史 (KV Cache)，Evolver 将无限长的上下文实时“坍缩”为一个唯一的 **高维词根 (High-Dimensional Word Root)**。
-* **代数指纹：**
-    这个词根包含了从开端到当下的全部逻辑演化。无论跨度多长，模型始终依据这个“代数指纹”来精确计算（而非预测）下一个输出。
-
-### 3. 推理即证明 (Inference as Proof)
-* **Proof Bundle (~280 Bytes)：**
-    每一次推理不仅输出结果，还附带一个基于 Fiat-Shamir 变换的紧凑数学证明。
-* **幻觉 = 数学错误 (Hallucination = Math Error)：**
-    如果模型产生的输出不符合逻辑路径，其代数结构将无法闭环。我们用一致性校验 (Consistency Check) 取代了置信度阈值。
+In this architecture, every inference is not merely the generation of a Token, but a rigorous mathematical proof (**Fiat-Shamir Proof**).
 
 ---
 
-## 🧠 与传统架构对比 (Comparison)
+## 📐 The Evolution: From Accumulators to Neural Evolution
+The core mathematical primitives of Evolver have undergone a qualitative transformation from "membership proofs" to "semantic logical evolution." Below is the evolutionary path of the core formulas:
 
-| 特性 | Transformer (Classic) | Evolver (Our Design) |
+### 1. The Accumulator Primitive
+In early protocol designs (see `HTP.md`), the focus was on processing the temporal accumulation of members ($P_{agent}$):
+
+$$T_{\text{next}} = (T_{\text{prev}}^{P_{\text{agent}}} \cdot G^{H(\text{depth})}) \pmod \Delta$$
+
+**Meaning:** The state $T$ evolves with the addition of agent $P$, and is injected with non-commutative temporal noise via depth $H(\text{depth})$.
+
+### 2. Semantic Evolution
+In Phase 3 (Crystal Brain), we reconstructed this formula into a neuronal activation function. Evolution is no longer simple storage, but the non-commutative interaction of semantic weights:
+
+$$S_{out} = S_{in}^{P_{weight}} \cdot G^{H(t)} \pmod \Delta$$
+
+* **$S_{in}$ (Context State):** The algebraic stream of input, carrying the preceding contextual logic.
+* **$P_{weight}$ (Semantic Fingerprint):** The "weight" of the neuron. Unlike floating-point weights, this is a massive prime number representing the neuron's specific operation on semantics (e.g., "logical inversion" or "conceptual abstraction").
+* **$G^{H(t)}$ (Spacetime Noise):** Injects spacetime depth noise to ensure that "A leads to B" is algebraically distinct from "B leads to A" (non-commutativity).
+
+---
+
+## 🏗️ Phase 3: Crystal Brain Architecture
+Based on the latest source code (`src/phase3/structure.rs`, `decoder.rs`), Evolver now possesses full generative capabilities:
+
+### 1. Crystal Layer & Neurons
+* **RwLock Architecture:** Unlike traditional matrix multiplication, each layer consists of independent `HTPNeuron` units. They process algebraic tuples in parallel and undergo safe structural mutations via `RwLock` during training.
+* **Holographic Collapse:** Each neuron maintains a miniature **HyperTensor**. Through a sparse **Fold** algorithm, infinite context is compressed into a unique **Global Root**.
+
+### 2. Inverse Decoder
+* **Generation as Navigation:** While Transformers retrieve the most probable word via Softmax, Evolver locates coordinates in algebraic space through **Inverse Decoding**.
+* **Spatial Indexing:**
+    1.  The model outputs a high-dimensional algebraic root.
+    2.  The `InverseDecoder` calculates the corresponding tensor **Coordinate**.
+    3.  The **KNN (K-Nearest Neighbors)** algorithm is used to find the nearest legal Token within the `VocabularyTensor`.
+
+### 3. Evolutionary Training
+* **Punish Path Mutation:**
+    Instead of Backpropagation, we employ evolutionary strategies.
+    * **Correct Inference:** The path is preserved (reward).
+    * **Incorrect Inference (Hallucination):** Triggers `punish_path_mutation`. The system randomly resets the neuron's prime weights ($P_{weight}$), forcing the network to find a new algebraic path to close the logical loop.
+
+---
+
+## 🧩 Technical Specifications
+
+### Affine Tuple
+All computational units are no longer scalars but affine tuples $\mathcal{A} = (P, Q)$, following a non-commutative associative law:
+
+$$\mathcal{A}_1 \oplus \mathcal{A}_2 = (P_1 \cdot P_2, \quad Q_1^{P_2} \cdot Q_2)$$
+
+### Proof-Carrying Code
+According to `SPECIFICATION.md`, every output is accompanied by a **ProofBundle** of approximately 280 Bytes:
+* **Primary Path:** A Merkle-style path along the challenge axis.
+* **Orthogonal Anchors:** Aggregated roots of orthogonal dimensions.
+* **Consistency:** Verifies that $\text{Fold}_y(\text{Slice}_y) \equiv \text{GlobalRoot}$.
+
+If verification fails, it indicates the model has produced a "mathematical hallucination," and the output is discarded immediately.
+
+---
+
+## ⚡ Performance Comparison
+
+| Feature | Transformer (Classic) | Evolver (Crystal Brain) |
 | :--- | :--- | :--- |
-| **核心逻辑** | 概率统计 (Softmax) | 代数演化 (Group Action) |
-| **上下文处理** | 扫描历史 (Attention, $O(N^2)$ ) | 全息坍缩 (Folding, $O(\log N)$ ) |
-| **语义管理** | 向量叠加 (Superposition) | 正交隔离与递归 (Orthogonal Anchoring) |
-| **长文本能力** | 受限于窗口，易迷失 | 无限上下文，深度指纹 |
-| **抗干扰** | 输出依据相似度匹配 (Guessing) | 路径闭环 (Proving) |
+| **Core Logic** | Statistics | Algebraic Evolution |
+| **Weight Form** | Float Matrices (Float32) | Large Prime Fingerprints |
+| **Context Window** | Limited by $O(N^2)$ Attention | Infinite ($O(\log N)$ Holographic Fold) |
+| **Hallucination** | Inherent (Feature) | Mathematical Error (Detected) |
+| **Training** | Backpropagation (BP) | Structural Mutation |
 
 ---
 
-## 💻 技术栈 (Tech Stack)
-Evolver 是一个深度融合了密码学与 AI 的跨学科系统：
-
-* **Layer 0: Cryptographic Primitives**
-    * Class Groups of Imaginary Quadratic Fields ($Cl(\Delta)$)
-    * NuCOMP Algorithm for fast composition
-    * Hash-to-Prime (Semantic Embedding)
-* **Layer 1: Topology**
-    * Sparse Hyper-Tensor ($d$-dimensional)
-    * Segment Tree Folding
-* **Layer 2: Neural Logic**
-    * Affine Neurons (Inputs: Tuples, Activation: Compose & Reduce)
-    * Semantic Residual Management (Recursion Depth Control)
+## 🗺️ Project Status
+* [x] **Phase 0: Foundation** (Math Primitives, Class Groups, HTP Core)
+* [x] **Phase 1: Topology** (Sparse Hyper-Tensor, Segment Tree Folding)
+* [x] **Phase 2: The Probe** (Attention-to-Prime Quantization)
+* [x] **Phase 3: Crystal Brain** (Current Focus)
+    * [x] `HTPModel` & `CrystalLayer` implementation.
+    * [x] `InverseDecoder` and KNN addressing.
+    * [x] `EvolutionaryTrainer` mutation logic.
+* [ ] Large-scale distributed training tests.
 
 ---
 
-## 🗺️ 演进路线 (Roadmap)
+## ⚖️ License
+**M-Patek PROPRIETARY LICENSE**
+Copyright © 2025 M-Patek Research. All Rights Reserved.
 
-- [x] **Phase 0: Foundation (Math)**
-    - [x] 验证类群代数的结合律与非交换性 (`htp-core` 已实现)。
-    - [x] 实现稀疏张量的 $O(\log N)$ 折叠算法。
-- [ ] **Phase 1: The "Affine Neuron"**
-    - [ ] 构建支持“语义残留”管理的神经元原型。
-    - [ ] 实现基于 `reduce_form` 的代数激活函数，防止高维衰减溢出。
-- [ ] **Phase 2: Hybrid Injection (The Probe)**
-    - [ ] 将 HTP 层作为“白盒探针”插入 Transformer，将 Attention 权重转化为素数基底。
-- [ ] **Phase 3: The "Crystal Brain" (Full Architecture)**
-    - [ ] 构建纯代数的端到端生成模型，实现“实时精确输出”。
-
----
-
-## 📜 许可证 (License)
-**M-Patek Proprietary License**
-* 本架构设计仅供 M-Patek Research 内部研究使用。
-* 禁止未经授权的商业模型训练或闭源分发。
-
-**Copyright © 2025 M-Patek Research.**
 *Rebuilding Intelligence, One Prime at a Time.*
