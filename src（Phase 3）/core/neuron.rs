@@ -6,8 +6,8 @@ use crate::net::wire::HtpResponse;
 use rug::Integer;
 use std::sync::{Arc, RwLock};
 
-/// 🧠 HTPNeuron: 仿射神经元 (The Processor)
-/// Crystal Brain 的核心处理单元。
+/// HTPNeuron: 仿射神经元 (The Processor)
+/// Evolutionary Neural System 的核心处理单元。
 /// 负责吞吐代数元组，进行逻辑演化，并将结果写入全息张量供 Oracle 读取。
 pub struct HTPNeuron {
     /// [Semantic Fingerprint]: 神经元的“权重”，一个代表特定语义（如“科技”）的大素数
