@@ -25,7 +25,7 @@ $$T_{\text{next}} = (T_{\text{prev}}^{P_{\text{agent}}} \cdot G^{H(\text{depth})
 **Meaning:** The state $T$ evolves with the addition of agent $P$, and is injected with non-commutative temporal noise via depth $H(\text{depth})$.
 
 ### 2. Semantic Evolution
-In Phase 3 (Crystal Brain), we reconstructed this formula into a neuronal activation function. Evolution is no longer simple storage, but the non-commutative interaction of semantic weights:
+In Phase 3 (Evolutionary Neural System), we reconstructed this formula into a neuronal activation function. Evolution is no longer simple storage, but the non-commutative interaction of semantic weights:
 
 $$S_{out} = S_{in}^{P_{weight}} \cdot G^{H(t)} \pmod \Delta$$
 
