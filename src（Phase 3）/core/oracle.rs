@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::collections::HashSet;
 
 /// 🔮 HTPOracle (Generation Head): 代数预言机 / 生成头
-/// 在 Crystal Brain 架构中，它的职责是从 HTPNeuron 的高维记忆张量中
+/// 在 Evolutionary Neural System 架构中，它的职责是从 HTPNeuron 的高维记忆张量中
 /// 逆向“解码”出合法的 Token 候选集，实现自主生成。
 pub struct HTPOracle {
     /// 绑定的宿主神经元（提供内存和权重）
