@@ -1,19 +1,20 @@
 // COPYRIGHT (C) 2025 M-Patek. ALL RIGHTS RESERVED.
 
 use crate::core::affine::AffineTuple;
-use crate::core::algebra::ClassGroupElement;
 use crate::topology::tensor::HyperTensor;
-use crate::net::wire::HtpResponse; // 复用 ProofBundle 结构
+use crate::net::wire::HtpResponse; 
 use rug::Integer;
 use std::sync::{Arc, RwLock};
 
-/// 🧠 HTPNeuron: 仿射神经元
-/// 不再处理浮点数，而是吞吐代数元组，进行逻辑演化。
+/// 🧠 HTPNeuron: 仿射神经元 (The Processor)
+/// Crystal Brain 的核心处理单元。
+/// 负责吞吐代数元组，进行逻辑演化，并将结果写入全息张量供 Oracle 读取。
 pub struct HTPNeuron {
     /// [Semantic Fingerprint]: 神经元的“权重”，一个代表特定语义（如“科技”）的大素数
     pub p_weight: Integer,
     
     /// [Internal Memory]: 微型超张量，用于短期记忆和上下文折叠
+    /// Oracle 需要读取此记忆来解码输出。
     pub memory: Arc<RwLock<HyperTensor>>,
     
     /// [System Params]: 用于群运算的判别式
@@ -70,11 +71,11 @@ impl HTPNeuron {
 
         // 4. [Proof Generation]: 生成推理证明
         // 随机抽取一个维度的路径作为“解释性证明”
-        // 在真实 AI 场景中，这代表模型“为什么”得出这个结论的逻辑链
+        // 在 Crystal Brain 中，这代表模型“为什么”得出这个结论的逻辑链
         let proof_coord = memory_guard.map_id_to_coord(0); // 示例：取 0 号位的解释
         let proof_path = memory_guard.get_segment_tree_path(&proof_coord, 0);
         
-        // 构造 ProofBundle (复用 wire 中的定义)
+        // 构造 ProofBundle
         let proof = HtpResponse::ProofBundle {
             request_id: 0, // 内部调用无 ID
             primary_path: proof_path,
@@ -89,11 +90,6 @@ impl HTPNeuron {
     fn evolve_tuple(&self, tuple: &AffineTuple, weight: &Integer) -> Result<AffineTuple, String> {
         // 逻辑：AffineTuple (P, Q) ^ W => (P^W, Q_new)
         // 这是一个递归组合过程，如果 W 很大，这里就是深度的非线性变换
-        // 为简化演示，我们只对 Q 部分做幂运算，P 部分做乘法 (同态性质)
-        
-        // S_{out} = S_{in}^W
-        // 实际实现应调用 tuple.pow(weight) 如果 AffineTuple 实现了 pow
-        // 这里手动模拟：
         let new_p = Integer::from(&tuple.p_factor * weight);
         let new_q = tuple.q_shift.pow(weight, &self.discriminant)?;
         
@@ -105,7 +101,7 @@ impl HTPNeuron {
 
     /// 内部助手：生成 G^H(t)
     fn generate_spacetime_noise(&self, t: usize) -> Result<AffineTuple, String> {
-        let g = ClassGroupElement::generator(&self.discriminant);
+        let g = crate::core::algebra::ClassGroupElement::generator(&self.discriminant);
         // H(t) = hash(t)
         let h_t = Integer::from(t + 1); // 简化哈希
         let q_noise = g.pow(&h_t, &self.discriminant)?;
@@ -119,8 +115,6 @@ impl HTPNeuron {
 
     /// [Residual Management]: 模拟代数规约与噪声过滤
     fn algebraic_reduction(&self, tuple: AffineTuple, depth: usize) -> Result<AffineTuple, String> {
-        // 如果递归深度太深，我们可能会丢弃一部分精度或者强制规约
-        // 这里调用底层的 reduce_form (通过 compose 触发)
         let identity = AffineTuple::identity(&self.discriminant);
         
         // "Residual Cutoff": 如果深度超过阈值，引入额外的平滑项
