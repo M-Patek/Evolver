@@ -11,7 +11,7 @@ Evolver 并不是从零开始的，它直接沿用了 HTP 在 `m-patek/htp` 中�
    * **Evolver 的继承**：将“海量上下文”映射到高维张量中。Transformer 的 KV Cache 痛点是随着长度增加计算量线性爆炸，而 Evolver 继承了 HTP 的折叠算法，将无限长的上下文实时“坍缩”为一个定长的全息指纹。
 
 3. **核心特性：非交换性 (Non-Commutativity)**
-   * **HTP 的用法**：防止重放攻击，保证操作顺序不可更改（$A \oplus B \neq B \oplus A$）。
+   * **HTP 的用法**：防止重放攻击，保证操作顺序不可更改（ $A \oplus B \neq B \oplus A$ ）。
    * **Evolver 的继承**：这是 Evolver 的灵魂！在自然语言中，“猫吃鱼”和“鱼吃猫”意思完全不同。Evolver 利用 HTP 的非交换演化公式 $S_{next} = S_{prev}^{P} \cdot G^{H(t)}$，将时间流逝直接物理嵌入到了代数结构中，完美模拟了认知的时序性。
 
 ---
