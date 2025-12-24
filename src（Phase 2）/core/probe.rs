@@ -2,6 +2,7 @@
 
 use crate::core::affine::AffineTuple;
 use crate::core::neuron::HTPNeuron;
+use crate::core::oracle::HTPOracle;
 use crate::core::primes::hash_to_prime;
 use crate::core::algebra::ClassGroupElement;
 use rug::Integer;
@@ -9,10 +10,14 @@ use std::sync::Arc;
 
 /// 🕵️ HTPProbe: 语义宪兵队
 /// 它的职责不是生成，而是“监察” Transformer 的 Hidden States。
+/// 集成了 Oracle 用于快速验证。
 pub struct HTPProbe {
     /// 绑定的神经元（负责具体的代数演化计算）
     neuron: Arc<HTPNeuron>,
     
+    /// [Oracle Integration]: 代数预言机，用于 O(1) 验证
+    oracle: HTPOracle,
+
     /// 阈值灵敏度：决定多少概率的 Attention 值得被转化为“硬逻辑”
     /// 范围 [0.0, 1.0]，默认 0.1
     attention_threshold: f32,
@@ -20,8 +25,10 @@ pub struct HTPProbe {
 
 impl HTPProbe {
     pub fn new(neuron: Arc<HTPNeuron>, threshold: f32) -> Self {
+        let oracle = HTPOracle::new(neuron.clone());
         HTPProbe {
             neuron,
+            oracle,
             attention_threshold: threshold,
         }
     }
@@ -67,41 +74,33 @@ impl HTPProbe {
 
     /// 🛡️ 2. The Logic Validator (Forward Pass)
     /// 验证：给定当前上下文，Transformer 预测的 'next_token' 是否合法？
+    /// [Optimized]: 使用 Oracle 进行 O(1) 查找，取代了 Phase 2 的暴力计算。
     pub fn verify_inference(
         &self,
         context_stream: Vec<AffineTuple>,
         next_token_id: u32
     ) -> Result<f32, String> {
-        // Step A: 运行 HTP 神经元的演化，计算出当前上下文的“代数指纹”
-        // 这里的 depth=1 只是示例，实际上会随着上下文深度增加
-        let (expected_state, _proof) = self.neuron.activate(context_stream, 1)?;
+        // Step A: 运行 HTP 神经元的演化，激活内部记忆张量
+        // 这会更新 Neuron 内部的 Tensor 状态
+        let (_expected_state, _proof) = self.neuron.activate(context_stream, 1)?;
         
-        // Step B: 将 Transformer 预测的 Token 转化为代数算子
+        // Step B: 调用 Oracle 提取当前上下文的合法候选集
+        // 这是 O(Active_Memory) 的操作，远快于遍历词表
+        let candidates = self.oracle.suggest_candidates()?;
+        
+        // Step C: 将 Transformer 预测的 Token 转化为素数
         let token_str = format!("tok_{}", next_token_id);
         let candidate_p = hash_to_prime(&token_str, 64).map_err(|e| e.to_string())?;
         
-        // Step C: 一致性检查 (Consistency Check)
-        // 核心逻辑：我们检查 'expected_state' 是否包含了 'candidate_p' 的特征？
-        // 或者更简单：我们计算 candidate 是否能让系统进入下一个“低熵”状态？
-        // 
-        // [简化算法]: 检查 P_candidate 是否能整除 expected_state 的 P_factor
-        // 在 HTP 的折叠逻辑中，如果路径正确，Root 的 P 值应该是路径上所有 P 的乘积（模意义下）。
-        // 如果 Transformer 产生了幻觉，它预测的 Token 对应的素数将与上下文的风马牛不相及。
-        
-        let rem = expected_state.p_factor.clone().rem_u(candidate_p.to_u32().unwrap_or(u32::MAX));
-        
-        if rem == 0 {
-            // 代数上完全吻合（这种情况极少，除非完全 deterministic）
+        // Step D: O(1) 集合查询
+        if candidates.contains(&candidate_p) {
+            // 命中！绝对合法的代数后继
             Ok(1.0)
         } else {
-            // 如果不整除，我们计算一个“代数距离”作为置信度
-            // 这里用伪代码表示：距离越远，分数越低
-            // 实际可能需要计算 Class Group 中的离散对数距离（极难），
-            // 或者使用我们在 Tensor 中预存的“合法邻居表”。
-            
-            // [Veto Logic Demo]: 假设只要不整除就是幻觉
-            // 但为了 Softmax 友好，我们返回一个惩罚后的低分
-            Ok(0.01) 
+            // 未命中。
+            // 可能是幻觉，也可能是该概念从未在上下文中出现过（Out-of-Distribution）。
+            // 我们给予严厉的惩罚。
+            Ok(0.01)
         }
     }
 
