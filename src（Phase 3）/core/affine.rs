@@ -37,7 +37,7 @@ impl AffineTuple {
         })
     }
 
-    // [NEW FEATURE for Crystal Brain]: 逆向操作辅助函数
+    // [NEW FEATURE for Evolutionary Neural System]: 逆向操作辅助函数
     // 用于 Oracle 从聚合状态中尝试分离出潜在的 Token Prime
     // 如果 self.p_factor 能被 denominator 整除，返回商 (Quotient)，否则返回 None
     pub fn try_divide_p(&self, denominator: &Integer) -> Option<Integer> {
