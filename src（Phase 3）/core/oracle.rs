@@ -21,7 +21,7 @@ impl HTPOracle {
 
     /// 🔍 Core Generation Logic: 候选集提取 (Decoding)
     /// 返回一个包含所有在当前代数结构中“活跃”且“合法”的原始素数集合。
-    /// 这是 Crystal Brain 生成下一个 Token 的核心步骤。
+    /// 这是 Evolutionary Neural System 生成下一个 Token 的核心步骤。
     pub fn suggest_candidates(&self) -> Result<HashSet<Integer>, String> {
         let memory_guard = self.neuron.memory.read().map_err(|_| "Lock poisoned")?;
         let weight = &self.neuron.p_weight;
