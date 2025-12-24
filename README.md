@@ -35,10 +35,10 @@ $$S_{out} = S_{in}^{P_{weight}} \cdot G^{H(t)} \pmod \Delta$$
 
 ---
 
-## 🏗️ Phase 3: Crystal Brain Architecture
+## 🏗️ Phase 3: Evolutionary Neural System Architecture
 Based on the latest source code (`src/phase3/structure.rs`, `decoder.rs`), Evolver now possesses full generative capabilities:
 
-### 1. Crystal Layer & Neurons
+### 1. Evolutionary Layer & Neurons
 * **RwLock Architecture:** Unlike traditional matrix multiplication, each layer consists of independent `HTPNeuron` units. They process algebraic tuples in parallel and undergo safe structural mutations via `RwLock` during training.
 * **Holographic Collapse:** Each neuron maintains a miniature **HyperTensor**. Through a sparse **Fold** algorithm, infinite context is compressed into a unique **Global Root**.
 
