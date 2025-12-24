@@ -91,7 +91,7 @@ If verification fails, it indicates the model has produced a "mathematical hallu
 * [x] **Phase 1: Topology** (Sparse Hyper-Tensor, Segment Tree Folding)
 * [x] **Phase 2: The Probe** (Attention-to-Prime Quantization)
 * [x] **Phase 3: Evolutionary Neural System** (Current Focus)
-    * [x] `HTPModel` & `CrystalLayer` implementation.
+    * [x] `HTPModel` & `EvolutionaryLayer` implementation.
     * [x] `InverseDecoder` and KNN addressing.
     * [x] `EvolutionaryTrainer` mutation logic.
 * [ ] Large-scale distributed training tests.
