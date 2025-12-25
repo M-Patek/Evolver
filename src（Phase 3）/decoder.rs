@@ -6,6 +6,16 @@ use crate::topology::tensor::Coordinate;
 use rug::Integer;
 use std::collections::HashMap;
 
+/// [Optimization]: K-D Tree Node
+/// 用于加速高维空间最近邻搜索的数据结构
+#[derive(Debug)]
+pub struct KdNode {
+    pub point: Coordinate,
+    pub left: Option<Box<KdNode>>,
+    pub right: Option<Box<KdNode>>,
+    pub axis: usize,
+}
+
 /// 🗺️ VocabularyTensor: 静态词汇宇宙 (The Atlas)
 /// 存储了 Token 在超空间中的确切位置。
 pub struct VocabularyTensor {
@@ -13,9 +23,13 @@ pub struct VocabularyTensor {
     pub star_map: HashMap<Coordinate, Integer>,
     /// 反向映射: Token Prime -> Token ID (用于最终解码)
     pub prime_to_id: HashMap<Integer, u32>,
-    /// 空间索引列表: 存储所有有效的坐标点，用于 KNN 遍历
-    /// (在生产环境中，这应该是一个 K-D Tree 或 R-Tree)
+    
+    /// [Legacy Index]: 线性列表，保留用于调试或全量遍历
     pub spatial_index: Vec<Coordinate>,
+
+    /// [PERFORMANCE FIX]: K-D Tree Root
+    /// 替换原先的暴力遍历，提供 O(log N) 的查询能力
+    pub kd_tree: Option<Box<KdNode>>,
     
     pub dimensions: usize,
     pub side_length: usize,
@@ -49,13 +63,46 @@ impl VocabularyTensor {
             }
         }
 
+        // [PERFORMANCE FIX]: 构建 K-D Tree
+        // 在初始化阶段花费 O(N log N) 时间建立索引，换取推理时的 O(log N)
+        let mut points_for_tree = spatial_index.clone();
+        let kd_tree = Self::build_kdtree(&mut points_for_tree, 0, dimensions);
+
         VocabularyTensor {
             star_map,
             prime_to_id,
             spatial_index,
+            kd_tree,
             dimensions,
             side_length,
         }
+    }
+
+    /// 递归构建平衡 K-D Tree
+    fn build_kdtree(points: &mut [Coordinate], depth: usize, k: usize) -> Option<Box<KdNode>> {
+        if points.is_empty() {
+            return None;
+        }
+
+        let axis = depth % k;
+        // 按当前轴排序，取中位数作为分割点
+        points.sort_by(|a, b| a[axis].cmp(&b[axis]));
+        let mid = points.len() / 2;
+
+        // 这里使用了 split_at_mut 来分割切片，但这需要所有权处理
+        // 简单起见，我们交换中位数到中间，并递归处理
+        let point = points[mid].clone();
+        
+        // 分割数组：[0..mid] 为左子树，[mid+1..] 为右子树
+        let (left_slice, right_slice_inclusive) = points.split_at_mut(mid);
+        let (_, right_slice) = right_slice_inclusive.split_first_mut().unwrap(); // 跳过 mid 本身
+
+        Some(Box::new(KdNode {
+            point,
+            left: Self::build_kdtree(left_slice, depth + 1, k),
+            right: Self::build_kdtree(right_slice, depth + 1, k),
+            axis,
+        }))
     }
 }
 
@@ -87,6 +134,7 @@ impl InverseDecoder {
         let predicted_coord = self.extract_coordinate(target_root);
 
         // 2. Exact Match Check (精确打击 - Zero Drift)
+        // 哈希表查找是 O(1)，最快路径
         if let Some(token_prime) = self.vocab_tensor.star_map.get(&predicted_coord) {
              if let Some(&tid) = self.vocab_tensor.prime_to_id.get(token_prime) {
                  return Ok(DecodeResult {
@@ -96,17 +144,14 @@ impl InverseDecoder {
              }
         }
 
-        // 3. KNN Search (模糊导航 - Non-Zero Drift)
-        // 如果落入了虚空，寻找最近的有效坐标
-        if let Some(nearest_coord) = self.find_nearest_neighbor(&predicted_coord) {
+        // 3. K-D Tree Search (快速空间导航 - Non-Zero Drift)
+        // [PERFORMANCE FIX]: 从 O(N) 优化至 O(log N)
+        if let Some(nearest_coord) = self.find_nearest_neighbor_optimized(&predicted_coord) {
             let token_prime = self.vocab_tensor.star_map.get(&nearest_coord).unwrap();
             let tid = self.vocab_tensor.prime_to_id.get(token_prime).unwrap();
             
             // 计算漂移距离 (Penalty Score)
             let drift = self.manhattan_distance(&predicted_coord, &nearest_coord);
-            
-            // 可以在日志中记录严重的漂移
-            // if drift > 5 { println!("⚠️ Significant Drift Detected: {} units.", drift); }
             
             return Ok(DecodeResult {
                 token_id: *tid,
@@ -134,29 +179,60 @@ impl InverseDecoder {
         coord
     }
 
-    /// 🔎 KNN Implementation (K=1)
-    /// 寻找曼哈顿距离最近的邻居
-    fn find_nearest_neighbor(&self, target: &Coordinate) -> Option<Coordinate> {
-        let mut min_dist = usize::MAX;
-        let mut nearest = None;
+    /// 🔎 [Optimized] K-D Tree Search
+    /// 使用树结构进行剪枝搜索
+    fn find_nearest_neighbor_optimized(&self, target: &Coordinate) -> Option<Coordinate> {
+        let mut best_dist = usize::MAX;
+        let mut best_coord = None;
 
-        // 暴力遍历 (Brute Force)
-        // 对于词表大小 < 100k，这个操作在 Rust 中非常快 (毫秒级)
-        // 只有当词表达到千万级时才需要 K-D Tree 优化
-        for candidate in &self.vocab_tensor.spatial_index {
-            let dist = self.manhattan_distance(target, candidate);
-            
-            if dist == 0 {
-                return Some(candidate.clone());
-            }
-
-            if dist < min_dist {
-                min_dist = dist;
-                nearest = Some(candidate);
-            }
+        if let Some(ref root) = self.vocab_tensor.kd_tree {
+            self.search_kdtree_recursive(root, target, &mut best_dist, &mut best_coord);
         }
 
-        nearest.cloned()
+        best_coord
+    }
+
+    fn search_kdtree_recursive(
+        &self, 
+        node: &KdNode, 
+        target: &Coordinate, 
+        best_dist: &mut usize, 
+        best_coord: &mut Option<Coordinate>
+    ) {
+        // 1. 计算当前节点距离
+        let d = self.manhattan_distance(&node.point, target);
+        if d < *best_dist {
+            *best_dist = d;
+            *best_coord = Some(node.point.clone());
+        }
+
+        // 如果距离为0，已是最优，无需继续
+        if *best_dist == 0 { return; }
+
+        // 2. 决定搜索顺序 (启发式：先搜目标点所在的那一侧)
+        let axis = node.axis;
+        let diff = (target[axis] as isize) - (node.point[axis] as isize);
+        
+        let (near, far) = if diff <= 0 {
+            (&node.left, &node.right)
+        } else {
+            (&node.right, &node.left)
+        };
+
+        // 3. 递归搜索“近”侧
+        if let Some(ref child) = near {
+            self.search_kdtree_recursive(child, target, best_dist, best_coord);
+        }
+
+        // 4. 剪枝判断：是否需要搜索“远”侧？
+        // 对于曼哈顿距离，如果在当前轴上的单一维度距离就已经超过了 best_dist，
+        // 那么远侧子树中不可能存在更近的点。
+        let axis_dist = diff.abs() as usize;
+        if axis_dist < *best_dist {
+            if let Some(ref child) = far {
+                self.search_kdtree_recursive(child, target, best_dist, best_coord);
+            }
+        }
     }
 
     /// 📏 Manhattan Distance
