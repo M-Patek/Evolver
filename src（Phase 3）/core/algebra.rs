@@ -245,7 +245,19 @@ impl ClassGroupElement {
         (gcd, x2, y2)
     }
 
+    /// 🛡️ [CANONICAL FIX]: 严格的 Gauss 规约算法 (Strict Gauss Reduction)
+    /// 
+    /// 确保输出的形式 (a, b, c) 满足标准规约条件：
+    /// 1. |b| <= a <= c
+    /// 2. 如果 |b| == a 或 a == c，则 b >= 0 (处理模糊形式 Ambiguous Forms)
+    /// 3. 防止死循环熔断
     fn reduce_form(mut a: Integer, mut b: Integer, discriminant: &Integer) -> Self {
+        // [SAFETY]: 熔断计数器，防止因判别式畸形或数值溢出导致的死循环
+        let mut loop_guard = 0;
+        const MAX_REDUCTION_STEPS: usize = 2000;
+
+        // Step 1: 初始归一化 (Normalization)
+        // 将 b 映射到半开区间 (-a, a]
         let mut two_a = Integer::from(2) * &a;
         b = b.rem_euc(&two_a);
         if b > a { b -= &two_a; }
@@ -253,15 +265,42 @@ impl ClassGroupElement {
         let four = Integer::from(4);
         let mut c = (b.clone().pow(2) - discriminant) / (&four * &a);
 
+        // Step 2: 迭代规约 (Reduction Loop)
+        // 只要 a > c，或者 (a == c 且 b < 0)，就说明还未达到标准型
         while a > c || (a == c && b < Integer::from(0)) {
+            if loop_guard > MAX_REDUCTION_STEPS {
+                // [PANIC]: 如果发生这种情况，说明底层数学假设被破坏，继续运行会导致共识分裂
+                // 在生产环境中，这应该触发更优雅的错误处理，但绝不能返回错误的规约态
+                panic!("❌ Fatal Math Error: Infinite reduction loop detected. Discriminant integrity compromised.");
+            }
+
             let num = &c + &b;
             let den = Integer::from(2) * &c;
+            
+            // 计算 s = floor((c + b) / 2c)
+            // rug 的 div_floor 保证了负数的正确取整方向
             let s = num.div_floor(&den); 
+            
+            // 应用变换矩阵
             let b_new = Integer::from(2) * &c * &s - &b;
             let a_new = c.clone();
+            // c_new = (b_new^2 - D) / 4a_new
             let c_new = (b_new.clone().pow(2) - discriminant) / (&four * &a_new);
-            a = a_new; b = b_new; c = c_new;
+            
+            a = a_new; 
+            b = b_new; 
+            c = c_new;
+            
+            loop_guard += 1;
         }
+
+        // [CANONICALIZATION CHECK]: 最终一致性检查
+        // 此时应满足 |b| <= a <= c。
+        // 特殊边界情况处理：
+        // 如果 a == c，循环条件 `b < 0` 保证了 b >= 0。
+        // 如果 b == -a，由于 rem_euc 的性质，b 会被映射为 a (即 b >= 0)。
+        // 因此不需要额外的 if 修正，只要 rem_euc 和 loop 条件正确即可。
+        
         ClassGroupElement { a, b, c }
     }
 }
