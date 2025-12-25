@@ -8,6 +8,14 @@ use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
+// [CONFIG]: 安全性硬限制
+// 即使在极端内存压力下，也不允许单点历史无限膨胀
+const MAX_TIMELINE_DEPTH: usize = 64; 
+// 全局容量软上限 (Soft Limit)
+const GLOBAL_CAPACITY_LIMIT: usize = 10_000_000;
+// 每次驱逐的批次大小，避免频繁触发
+const EVICTION_BATCH_SIZE: usize = 100;
+
 pub type Coordinate = Vec<usize>;
 
 /// [Theoretical Best]: 微观时间线容器
@@ -25,6 +33,23 @@ impl MicroTimeline {
             events: BTreeMap::new(),
         }
     }
+
+    /// [DoS Protection]: 限制单点历史深度
+    /// 如果一个坐标积累了过多的历史事件（可能是攻击者在刷热点），
+    /// 我们必须修剪最旧的事件以释放内存。
+    pub fn prune(&mut self) {
+        if self.events.len() > MAX_TIMELINE_DEPTH {
+            // 保留最新的 N 个，移除旧的
+            // 这是一个 O(K) 操作，比无限增长安全得多
+            let split_point = self.events.len().saturating_sub(MAX_TIMELINE_DEPTH);
+            // 找到需要保留的第一个 key
+            if let Some(&first_keep_key) = self.events.keys().nth(split_point) {
+                // split_off 返回 >= key 的部分（即新的部分），我们将旧的部分丢弃
+                let keep = self.events.split_off(&first_keep_key);
+                self.events = keep;
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,6 +60,7 @@ pub struct HyperTensor {
     
     /// [Upgrade]: Data 无论是空间还是时间，都是正交的
     /// HashMap<Space, BTreeMap<Time, Event>>
+    /// 注意：为了真正的并发性能，未来建议升级为 DashMap 或分片锁结构。
     pub data: HashMap<Coordinate, MicroTimeline>,
     
     #[serde(skip)]
@@ -82,13 +108,13 @@ impl HyperTensor {
         coord
     }
 
-    /// [FIXED]: Spacetime Orthogonal Insertion
-    /// 不再进行有损的 Merge，而是非破坏性地追加到时间线。
-    /// timestamp: 由神经元传入的逻辑时钟 t
+    /// [FIXED]: 弹性插入 (Resilient Insertion)
+    /// 解决了 DoS 漏洞：当容量满时，不再报错拒绝服务，而是执行随机驱逐 (Random Eviction)。
+    /// 这保证了系统在攻击下的可用性 (Availability)。
     pub fn insert(&mut self, user_id: &str, new_tuple: AffineTuple, timestamp: u64) -> Result<(), String> {
-        // [SECURITY FIX]: 依然保留容量限制，防止 OOM
-        if self.data.len() > 10_000_000 {
-            return Err("Server Capacity Reached".to_string());
+        // [DoS Defense 1]: 全局容量检查与紧急驱逐
+        if self.data.len() >= GLOBAL_CAPACITY_LIMIT {
+            self.perform_emergency_eviction();
         }
 
         let coord = self.map_id_to_coord_hash(user_id);
@@ -96,12 +122,34 @@ impl HyperTensor {
         // 获取或创建微观时间线
         let timeline = self.data.entry(coord).or_insert_with(MicroTimeline::new);
         
-        // [Logic Preserved]: 即使 coord 碰撞，事件也被保留在独立的时间槽中
-        // 如果同一个 t 发生多次写入（极其罕见），BTreeMap 会覆盖，这是符合预期的（同一时刻的状态更新）
+        // [DoS Defense 2]: 单点深度修剪
+        // 防止攻击者盯着一个坐标无限写入
+        timeline.prune();
+        
         timeline.events.insert(timestamp, new_tuple);
 
         self.cached_root = None;
         Ok(())
+    }
+
+    /// 🧹 紧急驱逐策略 (Emergency Eviction Strategy)
+    /// 当系统过载时，随机丢弃一部分数据以腾出空间。
+    /// 相比于 LRU，随机驱逐在 HashMap 上是 O(1) 的，更适合抗 DoS。
+    fn perform_emergency_eviction(&mut self) {
+        // 由于 Rust HashMap 的迭代顺序是不确定的（基于 Hash 种子），
+        // 直接取 iter().next() 就等同于伪随机选择。
+        // 我们批量移除 key 以减少 rehashing 开销。
+        
+        let keys_to_remove: Vec<Coordinate> = self.data.keys()
+            .take(EVICTION_BATCH_SIZE)
+            .cloned()
+            .collect();
+
+        for k in keys_to_remove {
+            self.data.remove(&k);
+        }
+        
+        // log::warn!("⚠️ HyperTensor Capacity Limit Reached. Evicted {} entries.", EVICTION_BATCH_SIZE);
     }
     
     pub fn save_to_disk(&self, path: &str) -> Result<(), String> {
