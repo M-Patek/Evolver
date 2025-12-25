@@ -6,13 +6,31 @@ use crate::phase3::decoder::InverseDecoder;
 use crate::core::primes::hash_to_prime;
 use std::sync::{Arc, RwLock};
 use rand::Rng;
+use rug::Integer;
 
-/// 🧬 EvolutionaryTrainer: 进化训练器
+/// 突变策略枚举
+enum MutationStrategy {
+    /// ☢️ Hard Reset: 彻底重置 (探索 Exploration)
+    /// 用于处理幻觉。可能随机生成，也可能从基因池回溯。
+    HardReset,
+    
+    /// 🔬 Local Shift: 局部游走 (利用 Exploitation)
+    /// 用于消除漂移。在素数邻域内微调，模拟梯度下降。
+    LocalShift,
+}
+
+/// 🧬 EvolutionaryTrainer: 进化训练器 (Enhanced with Memetic Search)
 pub struct EvolutionaryTrainer {
-    /// 模型本身被 RwLock 保护，以便我们可以修改其结构或参数
+    /// 模型本身被 RwLock 保护
     pub model: Arc<RwLock<HTPModel>>,
     pub decoder: InverseDecoder,
     pub learning_rate: f64, // 基础突变概率
+    
+    /// [FIX: Convergence Black-Box]
+    /// 基因池 (Gene Pool): 存储历史上导致 "Zero Drift" 的成功素数权重
+    /// 这打破了“死循环”，让进化有了方向记忆。
+    pub gene_pool: Vec<Integer>,
+    pub max_pool_size: usize,
 }
 
 impl EvolutionaryTrainer {
@@ -21,11 +39,12 @@ impl EvolutionaryTrainer {
             model,
             decoder: InverseDecoder::new(vocab_size),
             learning_rate: 0.05, // 5% 的概率发生突变
+            gene_pool: Vec::new(),
+            max_pool_size: 200, // 保留 200 个精英基因
         }
     }
 
     /// 🏋️ Train Step: 单步进化循环
-    /// 引入了 "Zero-Tolerance Drift" 机制
     pub fn train_step(&mut self, input_ids: &[u32], target_id: u32) -> Result<f32, String> {
         // [Step 1]: Forward Pass (推理)
         let prediction_root = {
@@ -34,7 +53,6 @@ impl EvolutionaryTrainer {
         };
 
         // [Step 2]: Decode & Drift Check (验证与探针)
-        // 这里的 unwrap_or 只是为了处理完全迷航的情况
         let decode_result = self.decoder.decode(&prediction_root)
             .unwrap_or(crate::phase3::decoder::DecodeResult { token_id: u32::MAX, drift: usize::MAX });
 
@@ -50,85 +68,127 @@ impl EvolutionaryTrainer {
         } 
         // Case B: 命中但存在漂移 -> 精确性压力 (Precision Pressure)
         else if decode_result.drift > 0 {
-            // 虽然对了，但是是有偏差的。给予一个较小的 Loss 警示。
             loss = 0.1 * (decode_result.drift as f32);
-            
-            // 计算“精确性风险”：漂移越大，触发微扰突变的概率越高
-            // 例如：漂移 10 个单位，就有 10% * 0.5 = 5% 的概率被重置
-            // 这迫使网络向“漂移为 0”的完美状态收敛
             let drift_risk = (decode_result.drift as f64) * 0.05; 
             
             let mut rng = rand::thread_rng();
-            if rng.gen_bool(drift_risk.min(0.5)) { // 风险封顶 50%
+            if rng.gen_bool(drift_risk.min(0.5)) { 
                 self.apply_micro_mutation();
-            } else {
-                // 如果侥幸逃脱突变，我们也可以视为一种弱奖励（保留现状）
-                // 但长远来看，漂移是不稳定的
             }
         }
-        // Case C: 完美命中 (Zero Drift) -> 奖励 (Reward)
+        // Case C: 完美命中 (Zero Drift) -> 奖励与收割 (Reward & Harvest)
         else {
             loss = 0.0;
-            self.reward_path();
+            self.reward_and_harvest();
         }
 
         Ok(loss)
     }
 
-    fn reward_path(&self) {
-        // 正确且精准的路径被保留。
-        // println!("✨ Perfect Logic Path Validated (Zero Drift).");
+    /// 🌾 Harvest: 收割精英基因
+    fn reward_and_harvest(&mut self) {
+        // 当我们获得完美推理时，当前的神经元配置是珍贵的。
+        // 我们随机采样一部分当前网络的权重存入基因池。
+        let mut rng = rand::thread_rng();
+        if rng.gen_bool(0.1) { // 10% 的概率采样，防止池子更新太快
+             if let Ok(model_guard) = self.model.read() {
+                 for layer in &model_guard.layers {
+                     if let Some(neuron) = layer.neurons.choose(&mut rng) {
+                         if let Ok(guard) = neuron.read() {
+                             self.add_to_gene_pool(guard.p_weight.clone());
+                         }
+                     }
+                 }
+             }
+        }
+    }
+
+    fn add_to_gene_pool(&mut self, gene: Integer) {
+        if self.gene_pool.len() >= self.max_pool_size {
+            self.gene_pool.remove(0); // 简单的 FIFO 淘汰
+        }
+        self.gene_pool.push(gene);
     }
 
     /// ☣️ Hard Mutation: 彻底重置
-    /// 用于处理严重的逻辑错误 (Hallucination)
     fn punish_path_mutation(&mut self) {
-        self.mutate_network(true);
+        self.mutate_network(MutationStrategy::HardReset);
     }
 
     /// 🔬 Micro Mutation: 微扰突变
-    /// 用于消除漂移 (Drift)。
-    /// 在逻辑上，这可能尝试在当前语义指纹附近寻找更优解，
-    /// 或者仅仅是以较低的烈度触发重置，试图 "Shake" 网络进入更好的局部最优。
     fn apply_micro_mutation(&mut self) {
-        // println!("⚠️ Drift Detected. Applying Micro-Mutation...");
-        // 这里的 false 标志位可以用于未来控制突变的幅度
-        // 目前为了保证代数性质的完整性，我们依然使用重哈希，但可以在 log 中区分
-        self.mutate_network(false); 
+        self.mutate_network(MutationStrategy::LocalShift);
     }
 
-    /// 通用突变逻辑
-    fn mutate_network(&mut self, is_hard_reset: bool) {
+    /// 通用突变逻辑 (Memetic Algorithm Implementation)
+    fn mutate_network(&mut self, strategy: MutationStrategy) {
         let mut rng = rand::thread_rng();
         let mut model_guard = self.model.write().expect("Model Lock Poisoned during mutation");
 
         for layer in &mut model_guard.layers {
             for neuron_lock in &layer.neurons {
-                // 如果是 Hard Reset，使用标准学习率
-                // 如果是 Micro Mutation，我们可能希望更聚焦，或者通过外部概率控制（外部已控制）
+                // 只有一定概率触发突变 (Learning Rate)
                 if rng.gen_bool(self.learning_rate) {
                     
                     let mut neuron_mut = neuron_lock.write().expect("Neuron Lock Poisoned");
 
-                    // 构造新的种子
-                    // Micro Mutation 可以尝试混入之前的权重特征，试图保留部分语义 (TODO)
-                    // 目前实现为随机搜索 (Stochastic Search)
-                    let mutation_type = if is_hard_reset { "HARD" } else { "MICRO" };
-                    let new_seed = format!("{}_mut_{}_{}", 
-                        mutation_type,
-                        rng.gen::<u64>(), 
-                        neuron_mut.discriminant
-                    );
+                    match strategy {
+                        // [Strategy 1]: Hard Reset (Exploration)
+                        MutationStrategy::HardReset => {
+                            // 30% 概率从基因池复活 (Reincarnation)，70% 概率完全随机
+                            if !self.gene_pool.is_empty() && rng.gen_bool(0.3) {
+                                let elite_gene = self.gene_pool.choose(&mut rng).unwrap();
+                                // 引入一点点突变，防止完全克隆
+                                neuron_mut.p_weight = elite_gene.clone(); 
+                                // Reset Memory
+                                if let Ok(mut memory_guard) = neuron_mut.memory.write() {
+                                    memory_guard.data.clear();
+                                    memory_guard.cached_root = None;
+                                }
+                            } else {
+                                // 传统的随机重置
+                                let new_seed = format!("hard_mut_{}_{}", rng.gen::<u64>(), neuron_mut.discriminant);
+                                if let Ok(new_prime) = hash_to_prime(&new_seed, 128) {
+                                    neuron_mut.p_weight = new_prime;
+                                    if let Ok(mut memory_guard) = neuron_mut.memory.write() {
+                                        memory_guard.data.clear();
+                                        memory_guard.cached_root = None;
+                                    }
+                                }
+                            }
+                        },
+                        
+                        // [Strategy 2]: Local Shift (Exploitation)
+                        // [FIX]: 不再随机重哈希，而是在素数空间游走
+                        MutationStrategy::LocalShift => {
+                            let current_p = &neuron_mut.p_weight;
+                            
+                            // 决定游走方向：变大还是变小
+                            let direction = if rng.gen_bool(0.5) { 1 } else { -1 };
+                            
+                            // 寻找邻近的素数 (Simulated Gradient)
+                            // Rug 的 next_prime 寻找大于当前值的下一个素数
+                            // 这里的逻辑简化处理：我们尝试加减一个偏移量然后找素数
+                            let offset = Integer::from(rng.gen_range(100..10000));
+                            let candidate_base = if direction == 1 {
+                                current_p.clone() + offset
+                            } else {
+                                let temp = current_p.clone() - offset;
+                                if temp < 1 { Integer::from(3) } else { temp }
+                            };
 
-                    match hash_to_prime(&new_seed, 128) {
-                        Ok(new_prime) => {
+                            let new_prime = candidate_base.next_prime();
+                            
+                            // 更新权重，保留记忆 (Soft Update)
+                            // 注意：改变 P 通常需要清除记忆，因为旧的记忆是基于旧 P 演化的
+                            // 但在 Micro-Mutation 中，我们或许希望保留部分上下文？
+                            // 为了数学严谨性，这里依然清除记忆，依靠输入的重新流式传输来重建状态
                             neuron_mut.p_weight = new_prime;
                             if let Ok(mut memory_guard) = neuron_mut.memory.write() {
                                 memory_guard.data.clear();
                                 memory_guard.cached_root = None;
                             }
-                        },
-                        Err(_) => continue,
+                        }
                     }
                 }
             }
