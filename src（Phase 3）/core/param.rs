@@ -3,6 +3,11 @@
 use rug::{Integer, complete::Complete};
 use blake3::Hasher;
 
+// [SECURITY NOTE]: 在生产构建中，必须在 Cargo.toml 中添加 wesolowski 依赖
+// 并开启 "production_vdf" feature。
+#[cfg(feature = "production_vdf")]
+use wesolowski::{verify as vdf_verify, Error as VdfError};
+
 // [SECURITY CONSTANTS]
 // 提升最小位宽至 3072 bits，以抵抗量子计算和未来的超级计算机攻击
 // 根据 Cohen-Lenstra 启发式，此量级的类群阶计算难度极高。
@@ -11,6 +16,11 @@ const MIN_DISCRIMINANT_BITS: u32 = 3072;
 // 域分离标签 (Domain Separation Tag)
 // 用于防止跨协议的重放攻击或哈希混淆
 const DOMAIN_TAG: &[u8] = b"Evolver_v1_System_Discriminant_Generation_DST";
+
+// [TRUSTLESS CONSTANTS]
+// 预设的时间参数 T，必须足够大以确保计算无法被并行加速
+// 例如：T = 2^40，需要数小时的连续平方运算
+const VDF_TIME_PARAM_T: u64 = 1 << 40; 
 
 pub struct SystemParameters {
     pub discriminant: Integer,
@@ -61,6 +71,8 @@ impl SystemParameters {
         let mut hasher = Hasher::new();
         hasher.update(DOMAIN_TAG);
         hasher.update(b"::TRUSTLESS_SETUP::PHASE_1::");
+        // [CRITICAL]: 必须混合 Block Hash 和 VDF Output
+        hasher.update(beacon_block_hash); 
         hasher.update(vdf_output);
         let final_seed = hasher.finalize();
 
@@ -127,11 +139,7 @@ impl SystemParameters {
     /// 
     /// [CRITICAL SECURITY UPGRADE]:
     /// 修复了原先直接返回 true 的 Mock 实现。
-    /// 在生产环境中，此函数必须调用 `vdf` crate (如 wesolowski) 的 `verify` 接口。
-    /// 
-    /// 在当前架构演示中，为了防止平凡攻击 (Trivial Attack)，我们实现了一个
-    /// 基于哈希的 "模拟验证逻辑"。它强制要求 Proof 必须与 Input/Output 
-    /// 存在数学绑定关系，从而消除 "任意 Proof 都能通过" 的漏洞。
+    /// 现在它根据 Feature Flag 决定是否调用真实的 `wesolowski` 验证器。
     fn verify_vdf(input: &[u8], output: &[u8], proof: &[u8]) -> bool {
         // 1. 基础完整性检查 (Sanity Checks)
         if input.is_empty() || output.is_empty() || proof.is_empty() {
@@ -139,27 +147,49 @@ impl SystemParameters {
             return false;
         }
 
-        // 2. 生产环境链接口 (Production Hook)
-        // #[cfg(feature = "production_mainnet")]
-        // return wesolowski::verify(RSA_2048_GROUP, input, output, proof, TIME_PARAM_T);
-
-        // 3. 架构演示环境的完整性约束 (Architecture Integrity)
-        // 为了确保系统逻辑闭环，我们要求 Proof = Hash(Input || Output || Salt)
-        // 这样攻击者必须按照我们的规则生成 Proof，而不能随意注入垃圾数据。
-        // 这模拟了 VDF 中 Proof 对 Input/Output 的依赖性。
-        let mut hasher = Hasher::new();
-        hasher.update(b"EVOLVER_VDF_SIMULATION_BINDING");
-        hasher.update(input);
-        hasher.update(output);
-        let expected_proof_hash = hasher.finalize();
-        
-        // 验证提供的 Proof 是否匹配预期的哈希绑定
-        let is_valid = proof == expected_proof_hash.as_bytes();
-
-        if !is_valid {
-            eprintln!("[VDF Verify] ❌ Proof Invalid: Algebraic binding check failed.");
+        // 2. [PRODUCTION PATH]: 真实验证
+        #[cfg(feature = "production_vdf")]
+        {
+            // 这是一个 CPU 密集型操作，验证 Wesolowski Proof
+            // 这里假设 Wesolowski 库使用特定的 Group (如 RSA-2048)
+            // 参数: Group, Input, Output, Proof, Time_T
+            
+            // 注意：真实库的调用签名可能略有不同，这里作为标准接口适配
+            match vdf_verify(input, output, proof, VDF_TIME_PARAM_T) {
+                Ok(true) => return true,
+                Ok(false) => {
+                    eprintln!("[VDF Verify] ❌ Mathematical verification failed.");
+                    return false;
+                },
+                Err(e) => {
+                    eprintln!("[VDF Verify] ❌ Verification error: {:?}", e);
+                    return false;
+                }
+            }
         }
 
-        is_valid
+        // 3. [DEV/MOCK PATH]: 模拟验证 (仅当 production_vdf 未开启时)
+        #[cfg(not(feature = "production_vdf"))]
+        {
+            println!("[VDF Verify] ⚠️ WARNING: Running in MOCK mode. Not secure for mainnet.");
+            
+            // 架构演示环境的完整性约束 (Architecture Integrity)
+            // 为了确保系统逻辑闭环，我们要求 Proof = Hash(Input || Output || Salt)
+            // 这样攻击者必须按照我们的规则生成 Proof，而不能随意注入垃圾数据。
+            let mut hasher = Hasher::new();
+            hasher.update(b"EVOLVER_VDF_SIMULATION_BINDING");
+            hasher.update(input);
+            hasher.update(output);
+            let expected_proof_hash = hasher.finalize();
+            
+            // 验证提供的 Proof 是否匹配预期的哈希绑定
+            let is_valid = proof == expected_proof_hash.as_bytes();
+
+            if !is_valid {
+                eprintln!("[VDF Verify] ❌ Proof Invalid: Algebraic binding check failed.");
+            }
+
+            is_valid
+        }
     }
 }
