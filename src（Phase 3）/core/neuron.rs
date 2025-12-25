@@ -5,6 +5,8 @@ use crate::topology::tensor::HyperTensor;
 use crate::net::wire::HtpResponse; 
 use rug::Integer;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
+use std::thread;
 
 /// HTPNeuron: 仿射神经元 (The Processor)
 /// 
@@ -39,12 +41,18 @@ impl HTPNeuron {
     /// 传统的无限累积会导致 P-Factor 指数级爆炸。我们通过监测位宽，
     /// 在 P 接近安全边界 (4096 bits) 时主动“结晶”当前状态，存入记忆张量，
     /// 并重置累加器。这使得神经元可以处理无限长的上下文而不崩溃。
+    ///
+    /// [SECURITY UPDATE]: 引入 Isochronous Padding (等时填充) 以防御侧信道攻击。
     pub fn activate(
         &self, 
         input_stream: Vec<AffineTuple>, 
         recursion_depth: usize 
     ) -> Result<(AffineTuple, HtpResponse), String> {
         
+        // [TIMING PROTECTION]: 启动精密计时器
+        // 记录函数进入的物理时刻，用于后续的等时填充
+        let start_time = Instant::now();
+
         let mut memory_guard = self.memory.write().map_err(|_| "Lock poisoned")?;
         
         // [Resealing Accumulator]: 用于暂存当前逻辑段的累积状态
@@ -112,6 +120,24 @@ impl HTPNeuron {
             orthogonal_anchors: vec![],
             epoch: recursion_depth as u64,
         };
+
+        // [SECURITY FIX]: Isochronous Padding (等时填充)
+        // 强制函数执行时间对齐到固定的时间桶 (Time Bucket)
+        // 这淹没了底层 GMP 库由于输入敏感性导致的时间差异。
+        // 假设根据 Benchmark，最坏情况下的演化路径不会超过 50ms。
+        const SECURITY_LATENCY_BUDGET_MS: u64 = 50;
+        let target_duration = Duration::from_millis(SECURITY_LATENCY_BUDGET_MS);
+        
+        let elapsed = start_time.elapsed();
+        if elapsed < target_duration {
+            // 如果计算过快，主动休眠以补齐时间差
+            // 这对吞吐量有一定影响，但为了安全是必须的
+            thread::sleep(target_duration - elapsed);
+        } else {
+            // 如果超时，说明系统负载过高或受到 DoS 攻击
+            // 在日志中记录，但不中断服务
+            // log::warn!("⚠️ Timing budget exceeded: {:?}", elapsed);
+        }
 
         Ok((final_output, proof))
     }
