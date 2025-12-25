@@ -18,16 +18,59 @@ impl ClassGroupElement {
         ClassGroupElement { a: one.clone(), b: one, c }
     }
 
-    // [NEW FEATURE]: 寻找非单位元生成元，确保真正的非交换性演化
+    // [SECURITY FIX]: 严格数学构造生成元
+    // 之前硬编码 a=3 的 Demo 逻辑已被移除。
+    // 现在使用标准的 "Prime Form Construction" 算法：
+    // 1. 寻找最小的素数 p，使得克罗内克符号 (Delta/p) = 1 (即 p 在域中分裂)
+    // 2. 求解 b，使得 b^2 = Delta (mod 4p)
+    // 3. 构造形式 (p, b, c) 并规约
     pub fn generator(discriminant: &Integer) -> Self {
-        // 简化的模拟生成元逻辑：
-        // 在真实实现中应寻找最小素数 p 使得 (Delta/p)=1 并求解对应的型
-        let mut g = Self::identity(discriminant);
-        // 修改 a 为 3 来模拟非单位元状态 (确保不为 Identity)
-        g.a = Integer::from(3); 
-        // 重新计算 c 以保持判别式一致性 (b^2 - 4ac = D)
-        // b=1, D=D => 1 - 4(3)c = D => c = (1-D)/12 (近似，仅作 Demo)
-        g
+        let mut p = Integer::from(2);
+        let four = Integer::from(4);
+
+        loop {
+            // 计算雅可比/克罗内克符号 (Delta / p)
+            // 如果结果为 1，说明 p 是分裂素数，存在对应的理想类
+            let symbol = discriminant.jacobi(&p);
+
+            if symbol == 1 {
+                // 找到了分裂素数 p。
+                // 现在的任务是寻找 b，使得 b^2 ≡ Delta (mod 4p)。
+                // 由于 Delta ≡ 1 (mod 4)，b 必定存在且为奇数。
+                
+                // 因为 p 通常非常小 (如 2, 3, 5, 7...)，我们可以直接暴力搜索 b。
+                // b 的搜索范围通常在 [1, 2p) 之间就能找到解。
+                let modulus = &p * &four;
+                let mut b = Integer::from(1);
+                
+                loop {
+                    // check = b^2 - Delta
+                    let sq_b = b.clone() * &b;
+                    let diff = sq_b - discriminant;
+                    
+                    if diff.is_divisible(&modulus) {
+                        // 找到了合法的 b！
+                        // c = (b^2 - Delta) / 4p
+                        let c = diff / &modulus;
+                        
+                        // 构造原始形式并进行规约，确保它是群中的标准代表元
+                        return Self::reduce_form(p, b, discriminant);
+                    }
+                    
+                    b += 2; // b 必须是奇数
+                    
+                    // 安全中断：理论上对于分裂素数不应该找不到 b
+                    // 但防止死循环，如果 b 超过了模数范围还没找到，说明逻辑有误
+                    if &b > &modulus {
+                        // 这种情况数学上不应发生，除非 p 不是分裂素数
+                        break; 
+                    }
+                }
+            }
+            
+            // 尝试下一个素数
+            p.next_prime_mut();
+        }
     }
 
     pub fn compose(&self, other: &Self, discriminant: &Integer) -> Result<Self, String> {
