@@ -16,12 +16,31 @@ impl HyperTensor {
     }
 
     pub fn compute_root_internal(&self) -> Result<AffineTuple, String> {
-        // [PERF FIX]: 移除旧的 build_active_prefixes (内存炸弹)，改为稀疏递归
-        let root = self.fold_sparse(0, &self.data)?;
+        // [Phase 1]: Micro-Fold (Time Aggregation)
+        // 将 data 中的 MicroTimeline 坍缩为单一的 AffineTuple
+        // 这相当于在每个空间点上，先跑完所有的历史因果链。
+        let mut flat_data: HashMap<Vec<usize>, AffineTuple> = HashMap::new();
+        
+        for (coord, timeline) in &self.data {
+            let mut local_root = AffineTuple::identity(&self.discriminant);
+            
+            // BTreeMap.values() 保证了按 key (timestamp) 升序迭代
+            // 完美保留了 A -> B 的非交换顺序: A.compose(B)
+            for tuple in timeline.events.values() {
+                local_root = local_root.compose(tuple, &self.discriminant)?;
+            }
+            
+            flat_data.insert(coord.clone(), local_root);
+        }
+
+        // [Phase 2]: Macro-Fold (Spatial Aggregation)
+        // 使用坍缩后的快照进行标准的空间折叠
+        let root = self.fold_sparse(0, &flat_data)?;
         Ok(root)
     }
 
-    // 内存友好的稀疏折叠算法 (O(N) 内存占用)
+    // 原始的稀疏折叠算法保持不变，它只负责处理空间维度
+    // 此时传入的 relevant_data 已经是去除了时间维度的扁平快照
     fn fold_sparse(
         &self,
         current_dim: usize,
@@ -35,7 +54,7 @@ impl HyperTensor {
              return Ok(AffineTuple::identity(&self.discriminant));
         }
 
-        // 按当前维度的索引分组 O(N)
+        // 按当前维度的索引分组
         let mut groups: HashMap<usize, HashMap<Vec<usize>, AffineTuple>> = HashMap::new();
         for (coord, tuple) in relevant_data {
             if current_dim >= coord.len() { continue; }
