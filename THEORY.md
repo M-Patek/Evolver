@@ -128,3 +128,32 @@ The security of the time dimension relies on the infeasibility of finding the or
 4.2 Space Security (Strong RSA / Adaptive Root)
 
 The security of the space dimension, effectively a product of primes and group elements, relies on the Strong RSA assumption (for $P$ factor factorization) and the Adaptive Root Assumption in Class Groups (for $Q$ aggregation). Forging a spatial inclusion proof requires solving the root problem $X^e \equiv Y \pmod \Delta$.
+
+4.3 The Kernel Trap (Boundary Analysis)
+
+4.3.1 Mathematical Possibility
+While the Non-Commutative Time Operator ($\oplus_{\text{time}}$) generally ensures that any perturbation $\varepsilon$ in the input state propagates to the output, there exists a theoretically possible boundary condition known as **"The Kernel Trap."**
+
+Let the perturbation be $\varepsilon \neq 1$. If $\varepsilon$ falls into the kernel of the power map $x \mapsto x^P$, i.e.,
+$$\varepsilon^P \equiv 1 \pmod \Delta$$
+then the output state remains unchanged despite the input mutation:
+$$\rho(\mathcal{A}, S \cdot \varepsilon) = (S \cdot \varepsilon)^P \cdot Q = S^P \cdot \varepsilon^P \cdot Q = S^P \cdot 1 \cdot Q = \rho(\mathcal{A}, S)$$
+
+Mathematically, this occurs if and only if the order of the perturbation element, denoted as $\text{ord}(\varepsilon)$, divides the semantic prime $P$:
+$$\text{ord}(\varepsilon) \mid P$$
+
+4.3.2 Engineering Mitigation
+In the HTP engineering implementation, we render the probability of falling into the Kernel Trap negligible through three layers of defense:
+
+1.  **Huge Class Number ($h(\Delta)$):**
+    By enforcing a discriminant size of $\geq 2048$ bits (see `param.rs`), the size of the Class Group is astronomically large ($\approx \sqrt{|\Delta|}$). This makes the probability of randomly encountering an element with a specific small order effectively zero ($< 2^{-100}$).
+
+2.  **Large Semantic Primes ($P$):**
+    The system weights $P$ are generated via `hash_to_prime` and are guaranteed to be large primes (e.g., 64-bit or 128-bit). Since $P$ is prime:
+    * For $\text{ord}(\varepsilon) \mid P$ to hold, $\text{ord}(\varepsilon)$ must be equal to $P$ (since $\varepsilon \neq 1$).
+    * This implies the attacker must find an element $\varepsilon$ whose order is exactly the large prime $P$.
+
+3.  **Small Order Filtering (Code Level):**
+    In `algebra.rs`, the `ClassGroupElement::generator` and validation logic explicitly filter out elements with small orders (e.g., 2, 3, 5). While this does not strictly eliminate elements of order $P$, combined with the **Hidden Order Assumption**, finding an element of a specific large order $P$ without knowing the class number $h(\Delta)$ is computationally equivalent to solving the Discrete Logarithm Problem or factoring the class number, which is infeasible.
+
+**Conclusion:** While the Kernel Trap is a valid algebraic boundary, it is cryptographically inaccessible in the Evolver architecture.
