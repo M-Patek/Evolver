@@ -305,15 +305,16 @@ Uniqueness follows because addition in $\text{Coord}$ is a group action by trans
 **Q.E.D.**
 
 **Corollary 5.8 (Finite Convergence Under Discrete LocalShift)**
-Assume LocalShift is restricted to unit moves $\delta \in \{\pm \vec{e}_i\}_{i=1}^d$ (one coordinate changes by $\pm 1 \pmod L$ per step). Then from any $\vec{b}$, there exists a deterministic sequence of LocalShift moves reaching $\vec{b}^*$ in exactly $\sum_{i=1}^d d_L(b_i, b^*_{,i})$ steps. Therefore, reachability/convergence in the $\vec{b}$-space is guaranteed without any assumption on the continuity of $\Psi$.
+Assume LocalShift is restricted to unit moves $\delta \in \{\pm \vec{e}\_{i}\}\_{i=1}^{d}$ (one coordinate changes by $\pm 1 \pmod L$ per step). Then from any $\vec{b}$, there exists a deterministic sequence of LocalShift moves reaching $\vec{b}^*$ in exactly $\sum\_{i=1}^{d} d\_{L}(b\_{i}, b^{*}\_{,i})$ steps. Therefore, reachability/convergence in the $\vec{b}$-space is guaranteed without any assumption on the continuity of $\Psi$.
 
 ### 5.4 Theorem: Verifiability of Bias-Augmented Outputs
 
 **Theorem 5.9 (Proof-Carrying Bias; No Splicing Under Binding)**
 Assume:
-1.  $\text{Proof}_{\text{alg}}$ verifies $Q_{\text{alg}}$ against $\text{GlobalRoot}_{\text{alg}}$ under the same $\text{ctx}$.
-2.  $\text{Proof}_{\text{bias}}$ verifies the revealed $\vec{b}$ against $\text{GlobalRoot}_{\text{bias}}$ under the same $\text{ctx}$.
-3.  $\text{GlobalRoot}$ binds $\text{GlobalRoot}_{\text{alg}}$, $\text{GlobalRoot}_{\text{bias}}$, and $\text{ctx}$ as in Definition 5.5 (or equivalently, $\text{GlobalRoot}_{\text{bias}}$ is included in the Fiat–Shamir transcript for $\text{Proof}_{\text{alg}}$).
+
+1. $\text{Proof}\_{\{\text{alg}\}}$ verifies $Q\_{\{\text{alg}\}}$ against $\text{GlobalRoot}\_{\{\text{alg}\}}$ under the same $\text{ctx}$.
+2. $\text{Proof}\_{\{\text{bias}\}}$ verifies the revealed $\vec{b}$ against $\text{GlobalRoot}\_{\{\text{bias}\}}$ under the same $\text{ctx}$.
+3. $\text{GlobalRoot}$ binds $\text{GlobalRoot}\_{\{\text{alg}\}}$, $\text{GlobalRoot}\_{\{\text{bias}\}}$, and $\text{ctx}$ as in Definition 5.5 (or equivalently, $\text{GlobalRoot}\_{\{\text{bias}\}}$ is included in the Fiat–Shamir transcript for $\text{Proof}\_{\{\text{alg}\}}$).
 
 Then any verifier can deterministically recompute
 
