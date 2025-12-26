@@ -12,6 +12,7 @@ use rand::thread_rng;
 pub type Coordinate = Vec<usize>;
 
 /// 🌳 TimeSegmentTree: 微观历史树
+/// 负责单个张量单元内的时序聚合。
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TimeSegmentTree {
     pub leaves: Vec<AffineTuple>,
@@ -46,13 +47,20 @@ impl TimeSegmentTree {
         let right = self.build_tree_recursive(&nodes[mid..], discriminant)?;
 
         // [Non-Commutative]: Left ⊕ Right
+        // 时间演化必须严格遵守顺序：先左后右
         left.compose(&right, discriminant)
     }
 
+    /// 🛡️ [FALSIFIABILITY BOUNDARY A]: Witness Index Validation
+    /// 生成历史见证（Merkle-style Proof）时的严格边界检查。
     pub fn generate_witness(&self, index: usize, discriminant: &Integer) -> Result<Vec<(AffineTuple, bool)>, String> {
+        // [CRITICAL CHECK]: 索引越界即“伪证”
+        // 如果请求的索引超出了当前记录的历史长度，说明该事件在物理时间上根本未发生。
+        // 系统必须直接返回 Error，拒绝生成任何虚构的见证路径。
         if index >= self.leaves.len() {
-            return Err("Index out of bounds".to_string());
+            return Err(format!("❌ Security Halt: Witness index {} out of bounds (History Length: {}). Evolution cannot be extrapolated.", index, self.leaves.len()));
         }
+
         let mut witness = Vec::new();
         self.generate_witness_recursive(&self.leaves, index, 0, discriminant, &mut witness)?;
         Ok(witness)
@@ -75,12 +83,16 @@ impl TimeSegmentTree {
         let right_slice = &nodes[mid..];
 
         if target_abs_index < current_offset + mid {
+            // Target is in Left Subtree
             let right_agg = self.build_tree_recursive(right_slice, discriminant)?;
+            // Witness is Right Sibling (false flag for direction)
             witness.push((right_agg, false)); 
             let left_agg = self.generate_witness_recursive(left_slice, target_abs_index, current_offset, discriminant, witness)?;
             return left_agg.compose(&self.build_tree_recursive(right_slice, discriminant)?, discriminant);
         } else {
+            // Target is in Right Subtree
             let left_agg = self.build_tree_recursive(left_slice, discriminant)?;
+            // Witness is Left Sibling (true flag for direction)
             witness.push((left_agg, true));
             let right_agg = self.generate_witness_recursive(right_slice, target_abs_index, current_offset + mid, discriminant, witness)?;
             return left_agg.compose(&right_agg, discriminant);
@@ -94,7 +106,7 @@ pub struct HyperTensor {
     pub side_length: usize,
     pub discriminant: Integer,
     
-    // [FIX]: Value 从单一的 AffineTuple 升级为 TimeSegmentTree
+    // Value 升级为 TimeSegmentTree 以支持时序证明
     pub data: HashMap<Coordinate, TimeSegmentTree>,
     
     #[serde(skip)]
@@ -153,7 +165,7 @@ impl HyperTensor {
         Ok(())
     }
     
-    // ... [save_to_disk / load_from_disk Omitted for brevity, assume unchanged] ...
+    // ... [save_to_disk / load_from_disk Omitted for brevity] ...
 
     pub fn get_segment_tree_path(&self, coord: &Coordinate, _axis: usize) -> Vec<AffineTuple> {
         if let Some(tree) = self.data.get(coord) {
