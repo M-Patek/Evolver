@@ -37,9 +37,8 @@ impl ClassGroupElement {
         loop {
             // Fallback strategy
             if attempts > MAX_ATTEMPTS {
-                // 如果找不到，返回一个已知的安全值或者 panic (这里简化处理)
-                // 在生产环境中，这应该是一个 Panic，因为这意味着 Discriminant 有问题
-                p = Integer::from(3); 
+                // 如果找不到，返回一个 Panic，因为这意味着 Discriminant 有问题
+                panic!("❌ Critical Error: Unable to find valid generator. Discriminant may be flawed."); 
             }
 
             let symbol = discriminant.jacobi(&p);
