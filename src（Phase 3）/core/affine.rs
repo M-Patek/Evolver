@@ -22,13 +22,13 @@ impl AffineTuple {
         }
     }
 
-    /// 🧩 Local Chunk Composition (局部聚合)
+    /// ⏳ [Time Operator]: Non-Commutative Composition (时间演化 - 非交换)
     /// 
-    /// 注意：此方法仅用于将相邻的几个 Token 聚合成一个更大的算子 (Chunk Operator)。
-    /// 严禁用于全局状态的串行累积！全局演化请使用 `ClassGroupElement::apply_affine`。
+    /// 用于时间线上的因果累积。
+    /// 公式: (P1, Q1) ⊕ (P2, Q2) = (P1*P2, Q1^P2 * Q2)
+    /// 这里的 Q1^P2 引入了非交换性，确保历史顺序不可篡改。
     pub fn compose(&self, other: &Self, discriminant: &Integer) -> Result<Self, String> {
         // [SAFETY CHECK]: 防止 P 因子爆炸
-        // 在 Phase 3 架构中，全局 P 累积是被数学禁止的。
         let p_bits_new = self.p_factor.significant_bits() + other.p_factor.significant_bits();
         if p_bits_new > MAX_CHUNK_P_BITS { 
              return Err(format!(
@@ -45,6 +45,30 @@ impl AffineTuple {
         // 这里体现了非交换性：S ^ (P1*P2) * (Q1^P2 * Q2)
         let q1_pow_p2 = self.q_shift.pow(&other.p_factor, discriminant)?;
         let new_q = q1_pow_p2.compose(&other.q_shift, discriminant)?;
+
+        Ok(AffineTuple {
+            p_factor: new_p,
+            q_shift: new_q,
+        })
+    }
+
+    /// 🌌 [Space Operator]: Commutative Aggregation (空间聚合 - 交换)
+    /// 
+    /// 理论修正 (Theoretical Fix):
+    /// 为了保证多维全息验证的数学正确性 (Fold_xy == Fold_yx)，
+    /// 空间维度的聚合必须是交换的 (Abelian)。
+    /// 我们利用 Class Group 本身是阿贝尔群的性质，执行分量乘法。
+    /// 
+    /// 公式: (P1, Q1) ⊗ (P2, Q2) = (P1*P2, Q1*Q2)
+    pub fn commutative_merge(&self, other: &Self, discriminant: &Integer) -> Result<Self, String> {
+        // P_new = P1 * P2 (整数乘法，交换)
+        // P 因子依然用于位置指纹验证
+        let new_p = Integer::from(&self.p_factor * &other.p_factor);
+
+        // Q_new = Q1 * Q2 (群乘法，交换)
+        // [CRITICAL CHANGE]: 移除了 Q^P 的非交换操作
+        // 这使得 Fold 操作在拓扑上变得可交换。
+        let new_q = self.q_shift.compose(&other.q_shift, discriminant)?;
 
         Ok(AffineTuple {
             p_factor: new_p,
