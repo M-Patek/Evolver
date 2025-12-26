@@ -26,7 +26,6 @@ impl ClassGroupElement {
 
     /// 🛡️ [Security]: Safe Generator Selection (SGS)
     /// 生成一个密码学安全的、非小阶的生成元。
-    /// 过程包括：哈希种子 -> 寻找素数 P -> 勒让德符号校验 -> 构造形式 -> 小阶过滤
     pub fn generator(discriminant: &Integer) -> Self {
         let four = Integer::from(4);
         let mut hasher = Hasher::new();
@@ -34,7 +33,6 @@ impl ClassGroupElement {
         hasher.update(&discriminant.to_digits(rug::integer::Order::Lsf));
         let hash_output = hasher.finalize();
         
-        // 从哈希中确定性地派生起始搜索点
         let mut p = Integer::from_digits(hash_output.as_bytes(), rug::integer::Order::Lsf);
         p.next_prime_mut();
 
@@ -42,28 +40,16 @@ impl ClassGroupElement {
         const MAX_ATTEMPTS: usize = 10_000;
 
         loop {
-            // [Fallback Strategy]: 防止死循环
             if attempts > MAX_ATTEMPTS {
-                // 如果找不到生成元，说明判别式本身可能有严重缺陷
                 panic!("❌ Critical Error: Unable to find valid generator. Discriminant may be flawed."); 
             }
 
-            // 1. 勒让德符号检测 (Delta/p) = 1
-            // 这意味着判别式 Delta 在模 p 下是二次剩余，即存在对应的二次型
+            // 勒让德符号检测 (Delta/p) = 1
             let symbol = discriminant.jacobi(&p);
             if symbol == 1 {
                 let modulus = &p * &four;
                 let mut b = Integer::from(1);
                 
-                // [Optimization]: 随机化 b 的搜索起点，避免总是命中同一个简单的解
-                if attempts == 0 {
-                     let mask = Integer::from(1_000_000);
-                     // 简单位操作引入扰动
-                     let p_perturb = (p.clone() & mask) + 1000; 
-                     // 这里不直接改变 p，而是改变 b 的搜索策略，但为代码简洁保持 b 扫描
-                }
-
-                // 求解 b^2 = D (mod 4p)
                 let b_limit = if &p < &Integer::from(10_000) { &modulus } else { &Integer::from(20_000) };
                 let mut found_b = false;
                 
@@ -73,12 +59,10 @@ impl ClassGroupElement {
                         found_b = true;
                         break;
                     }
-                    b += 2; // b 必须是奇数 (因为 D = 1 mod 4)
+                    b += 2; // b 必须是奇数
                 }
 
                 if found_b {
-                    // [SECURITY FIX]: 处理 reduce_form 可能返回的错误
-                    // 只有当构造出的形式通过了严格的数学边界检查，才会被采纳
                     match Self::reduce_form(p.clone(), b, discriminant) {
                         Ok(candidate) => {
                             // Critical: Real Small Order Filter (过滤小阶元素)
@@ -87,9 +71,7 @@ impl ClassGroupElement {
                                 return candidate;
                             }
                         },
-                        Err(_) => {
-                            // 忽略构造失败的 form (可能是非本原的)，继续搜索
-                        }
+                        Err(_) => {}
                     }
                 }
             }
@@ -99,17 +81,12 @@ impl ClassGroupElement {
     }
 
     /// 🛡️ [SECURITY UPGRADE]: 真正的小阶元素检测
-    /// 检测元素是否属于容易被攻击的小阶子群
     fn has_small_order(&self, discriminant: &Integer, limit_val: u32) -> bool {
         let identity = Self::identity(discriminant);
         
-        // 1. Trivial Check (平凡检查)
         if self == &identity { return true; }
-        // 排除明显的阶为 2 的元素 (Ambiguous Forms)
         if self.a == self.b || self.a == self.c || self.b == 0 { return true; }
         
-        // 2. Small Prime Annihilation Test (小素数湮灭测试)
-        // 计算 limit 内所有素数的积作为湮灭因子
         let mut annihilator = Integer::from(1);
         let mut p = Integer::from(2);
         let limit = Integer::from(limit_val); 
@@ -119,15 +96,14 @@ impl ClassGroupElement {
             p.next_prime_mut();
         }
 
-        // 执行幂次检测: g^annihilator == Identity ?
         match self.pow(&annihilator, discriminant) {
             Ok(res) => {
                 if res == identity {
-                    return true; // 是小阶元素，拒绝
+                    return true;
                 }
-                false // 通过测试
+                false
             },
-            Err(_) => true, // 如果运算出错，保守拒绝
+            Err(_) => true,
         }
     }
 
@@ -140,13 +116,9 @@ impl ClassGroupElement {
     }
 
     /// ✨ [FIXED] Composition Algorithm (Cohen Algo 5.4.7)
-    /// 实现了严格的相容性检查
     pub fn compose(&self, other: &Self, discriminant: &Integer) -> Result<Self, String> {
-        // Step 1: Compute intermediate values
         let s = (&self.b + &other.b) >> 1; 
-        let n = &other.a; // Just an alias conceptually
         
-        // Step 2: Extended Euclidean Algorithm
         // Solve: u*a1 + v*a2 = d
         let (d, _u, v) = Self::extended_gcd(&self.a, &other.a);
         
@@ -157,16 +129,16 @@ impl ClassGroupElement {
         // 检查 d | s 是否成立。如果不成立，说明这两个形式无法合成。
         let (_q_dummy, r) = s.div_rem_ref(&d).into();
         if r != Integer::from(0) {
-            return Err(format!("Composition Error: gcd(a1, a2)={} does not divide s (s={}). Forms are in compatible.", d, s));
+            return Err(format!("Composition Error: gcd(a1, a2)={} does not divide s (s={}). Forms are incompatible.", d, s));
         }
         
-        // Step 3: Compute new A coefficient
+        // Compute new A coefficient
         // A = a1 * a2 / d^2
         let a1_div_d = Integer::from(a1 / &d);
         let a2_div_d = Integer::from(a2 / &d);
         let new_a = Integer::from(&a1_div_d * &a2_div_d);
 
-        // Step 4: Compute new B coefficient
+        // Compute new B coefficient
         let s_minus_b2 = &s - &other.b;
         let val = &v * (&s_minus_b2 / &d); 
         let mod_a1_d = &a1_div_d;
@@ -183,7 +155,6 @@ impl ClassGroupElement {
     }
 
     /// ✨ [FIXED] Square Algorithm (NUDUPL / Doubling)
-    /// 针对平方运算优化的合成算法
     pub fn square(&self, discriminant: &Integer) -> Result<Self, String> {
         let (g, _x, y) = Self::extended_gcd(&self.a, &self.b);
 
@@ -198,12 +169,10 @@ impl ClassGroupElement {
         let term = Integer::from(2) * &a_div_g * &yc;
         let new_b = &self.b + &term;
 
-        // [SECURITY CHECK]: 同样必须通过 reduce_form 的验证
         Self::reduce_form(new_a, new_b, discriminant)
     }
 
     /// 🛡️ [Security]: Constant-Sequence Exponentiation (常数序列求幂)
-    /// 尽量减少侧信道泄露
     pub fn pow(&self, exp: &Integer, discriminant: &Integer) -> Result<Self, String> {
         if exp == &Integer::from(0) {
             return Ok(Self::identity(discriminant));
@@ -213,7 +182,6 @@ impl ClassGroupElement {
         let mut r1 = self.clone();
         let bits_count = exp.significant_bits();
 
-        // Montgomery Ladder 风格的循环结构
         for i in (0..bits_count).rev() {
             let bit = exp.get_bit(i);
             if !bit {
@@ -227,7 +195,6 @@ impl ClassGroupElement {
         Ok(r0)
     }
 
-    /// 扩展欧几里得算法辅助函数
     fn extended_gcd(a: &Integer, b: &Integer) -> (Integer, Integer, Integer) {
         let (mut r0, mut r1) = (a.clone(), b.clone());
         let (mut s0, mut s1) = (Integer::from(1), Integer::from(0));
@@ -241,7 +208,7 @@ impl ClassGroupElement {
             s0 = s1; s1 = s2;
             t0 = t1; t1 = t2;
         }
-        (r0, s0, t0) // Returns (gcd, x, y) such that ax + by = gcd
+        (r0, s0, t0) 
     }
 
     /// 🛡️ [SECURITY CORE]: 增强型 Reduce Form (The Invariant Fortress)
