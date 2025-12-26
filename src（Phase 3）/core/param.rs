@@ -10,12 +10,15 @@ use wesolowski::{verify as vdf_verify, Error as VdfError};
 
 // [SECURITY CONSTANTS]
 // 提升最小位宽至 3072 bits，以抵抗量子计算和未来的超级计算机攻击
+// 这是系统能接受的理论下限
 const MIN_DISCRIMINANT_BITS: u32 = 3072; 
 
 // 域分离标签 (Domain Separation Tag)
+// 防止跨协议重放攻击
 const DOMAIN_TAG: &[u8] = b"Evolver_v1_System_Discriminant_Generation_DST";
 
 // [TRUSTLESS CONSTANTS]
+// VDF 时间参数 T，决定了计算必须经历的物理时间长度
 const VDF_TIME_PARAM_T: u64 = 1 << 40; 
 
 pub struct SystemParameters {
@@ -24,17 +27,21 @@ pub struct SystemParameters {
 
 impl SystemParameters {
     /// ⚠️ [DEPRECATED]: 仅用于开发或测试环境
+    /// 这里的“证伪性”在于强制的安全参数检查。
     pub fn from_random_seed(seed_bytes: &[u8], bit_size: u32) -> Self {
-        // [SECURITY FIX 1]: 强制安全参数下限检查
+        // [FALSIFIABILITY POINT 1]: 安全参数下限检查
+        // 如果用户试图使用弱加密参数（例如为了性能牺牲安全性），
+        // 系统将直接熔断（Panic），拒绝不安全的启动。
         if bit_size < 2048 {
-             panic!("❌ SECURITY VIOLATION: Discriminant size must be >= 2048 bits (Recommended 3072).");
+             panic!("❌ SECURITY VIOLATION: Discriminant size must be >= 2048 bits (Recommended 3072). System Halted.");
         }
         
         println!("[System] ⚠️ WARNING: Using interactive seed setup. NOT SECURE for production.");
         Self::generate_internal(seed_bytes, bit_size)
     }
 
-    /// 🛡️ [THEORETICAL OPTIMUM]: 无信参数生成协议
+    /// 🛡️ [THEORETICAL OPTIMUM]: 无信参数生成协议 (Trustless Setup)
+    /// 这是生产环境的标准入口。
     pub fn derive_trustless_discriminant(
         beacon_block_hash: &[u8], 
         vdf_output: &[u8],      
@@ -43,14 +50,16 @@ impl SystemParameters {
         println!("[System] Initiating Trustless Setup Protocol...");
         println!("[System] Target Security Level: {} bits", MIN_DISCRIMINANT_BITS);
 
-        // 1. [Step 1]: 验证 VDF 证明
+        // [FALSIFIABILITY POINT 2]: VDF 验证
+        // 如果无法数学证明该参数经过了不可压缩的时间计算（即可能被预计算或操纵），
+        // 函数返回 Error，上层调用者必须终止流程。
         if !Self::verify_vdf(beacon_block_hash, vdf_output, vdf_proof) {
             return Err("❌ FATAL: VDF Proof Invalid. The randomness source may be manipulated.".to_string());
         }
 
         println!("[System] ✅ VDF Verified. Entropy is hardened by physical time.");
 
-        // 2. [Step 2]: 确定性混合
+        // 2. [Step 2]: 确定性混合 (Deterministic Mixing)
         let mut hasher = Hasher::new();
         hasher.update(DOMAIN_TAG);
         hasher.update(b"::TRUSTLESS_SETUP::PHASE_1::");
@@ -59,7 +68,7 @@ impl SystemParameters {
         let final_seed = hasher.finalize();
 
         // 3. [Step 3]: 生成基本判别式
-        // 注意：这里传入的 bit_size 必须足以抵抗离散对数攻击
+        // 这里必须使用系统定义的最小安全位宽
         let params = Self::generate_internal(final_seed.as_bytes(), MIN_DISCRIMINANT_BITS);
         
         Ok(params)
@@ -71,14 +80,18 @@ impl SystemParameters {
         println!("[System] Deriving Fundamental Discriminant (Full Entropy Mode)...");
         
         let mut attempt = 0;
+        // 设置一个极高的上限，防止无限死循环，但如果在这么多次尝试后仍失败，
+        // 说明熵源有问题或系统正处于极度异常的状态。
         let max_attempts = 10_000_000; 
 
         // 计算需要的字节数 (向上取整)
         let num_bytes = ((bit_size + 7) / 8) as usize;
 
         loop {
+            // [FALSIFIABILITY POINT 3]: 熵池耗尽 / 生成超时
+            // 防止进程陷入死锁状态 (CPU DoS)。
             if attempt > max_attempts {
-                panic!("❌ Failed to generate System Parameters. Entropy pool exhausted or bad luck.");
+                panic!("❌ Failed to generate System Parameters. Entropy pool exhausted or bad luck. System Halted.");
             }
 
             // 1. CSPRNG 扩展: 使用 BLAKE3 XOF 模式
@@ -110,6 +123,7 @@ impl SystemParameters {
             }
 
             // 4. 强素性测试 (Miller-Rabin)
+            // 这是概率性测试，但对于加密应用来说，50轮测试的误判率可以忽略不计
             if candidate.is_probably_prime(50) != rug::integer::IsPrime::No {
                 let discriminant = -candidate;
                 println!("✅ [Trustless Setup] Success! Found Fundamental Discriminant.");
@@ -123,6 +137,7 @@ impl SystemParameters {
     }
 
     fn verify_vdf(input: &[u8], output: &[u8], proof: &[u8]) -> bool {
+        // 基本的完整性检查
         if input.is_empty() || output.is_empty() || proof.is_empty() {
             eprintln!("[VDF Verify] ❌ Security Alert: Empty payload detected.");
             return false;
@@ -145,6 +160,8 @@ impl SystemParameters {
 
         #[cfg(not(feature = "production_vdf"))]
         {
+            // 在非生产环境下，我们模拟 VDF 验证
+            // 注意：这仅用于单元测试，绝对不能用于主网
             println!("[VDF Verify] ⚠️ WARNING: Running in MOCK mode. Not secure for mainnet.");
             let mut hasher = Hasher::new();
             hasher.update(b"EVOLVER_VDF_SIMULATION_BINDING");
