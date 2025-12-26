@@ -70,3 +70,18 @@ $$\| \Phi(g^x) - \Phi(g^{x+\epsilon}) \| < K \cdot \|\epsilon\|$$
 1.  **同源图 (Isogeny Graphs)**: 利用图上的游走代替素数加减。
 2.  **格理论 (Lattice Theory)**: 构造 CVP (Closest Vector Problem) 友好的代数结构。
 3.  **p-进数度量 (p-adic Metrics)**: 重新定义“距离”，也许在非欧几里得拓扑下连续性是存在的。
+
+---
+
+## 总结成三条可证明命题：
+
+1. **稳定性定理（严格版）**
+   在环面距离 $d$ 下，函数 $\vec b \mapsto (\Phi(S^w)+\vec b) \pmod L$ 是等距映射，因此是全局 1-Lipschitz 连续的，而不仅是局部。
+
+2. **可控性定理（一步校正）**
+   对任意目标坐标 $\vec c_*$，存在 $\vec b_* = \vec c_* - \Phi(S^w) \pmod L$ 使输出坐标精确命中。若更新规则允许直接设定 $\vec b$，则坐标误差可在一步内消除。
+
+3. **可验证性定理（需绑定条件）**
+   若存在联合承诺 $R_{total}$ 将 $R_{alg}$ 与 $R_{bias}$ 以及上下文绑定，则：
+   $$Verify(Proof_{alg}, R_{total}) \land Verify(Proof_{bias}, R_{total}) \Rightarrow \text{输出坐标计算可信}$$
+   若缺少绑定条件，则该蕴含关系不成立（可构造拼接攻击的反例）。
