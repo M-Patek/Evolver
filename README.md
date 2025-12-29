@@ -1,4 +1,4 @@
-# New Evolver: Neuro-Symbolic Alignment Orchestrator
+# Evolver: Neuro-Symbolic Alignment Orchestrator
 **(Bias-Controlled HTP Architecture)**
 
 > "Logic is not generated; it is orchestrated."
