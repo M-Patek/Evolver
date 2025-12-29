@@ -1,105 +1,126 @@
-# Evolver: The Evolutionary Neural System Architecture
-**(Hyper-Tensor Protocol for Neuro-Symbolic Generative AI)**
+# New Evolver: Neuro-Symbolic Alignment Orchestrator
+**(Bias-Controlled HTP Architecture)**
 
-> "From Probabilistic Guessing to Algebraic Proof."
+> "Logic is not generated; it is orchestrated."
 
-We are not just eliminating hallucinations; we are constructing the guardrails of thought using number theory.
+Evolver is a neuro-symbolic alignment system based on the **Hyper-Tensor Protocol (HTP)** and **Semi-Tensor Product (STP)**. Instead of attempting to train a "perfect" generator, it implements a **Sidecar Controller** that corrects the generator's output in real-time via algebraic constraints, ensuring rigorous logical derivation (**Zero Hallucination**).
 
----
+## 🏛️ Core Architecture
 
-## 📖 Core Vision
-Evolver aims to reconstruct the underlying logic of artificial intelligence through the **Hyper-Tensor Protocol (HTP)**. We abandon the black-box probabilistic fitting inherent in the Transformer architecture in favor of a fully interpretable and traceable "**Evolutionary Neural System**."
+The current Evolver system consists of three core components, forming a closed loop from "probabilistic guessing" to "algebraic truth":
 
-In this architecture, every inference is not merely the generation of a Token, but a rigorous mathematical proof (**Fiat-Shamir Proof**).
+### 1. The Generator (Chaotic Core)
+* **Role**: Provides raw cognitive "primitives" (Logits).
+* **Traits**: Retains chaotic weights based on the *Hidden Order Assumption*, ensuring model irreversibility and **Security**.
+* **Status**: Permitted to produce **Hallucinations**; does not require perfect training.
 
----
+### 2. The STP Engine (Constraint Checker)
+* **Code**: `src/dsl/stp_bridge.rs`
+* **Role**: The "Physics Engine" of the logical world.
+* **Principle**: Based on the Algebraic State-Space Theory of **Semi-Tensor Product (STP)**. It maps all logical actions (Define, Apply, Assert) into matrix operations: $x(t+1) = L \ltimes x(t)$.
+* **Function**: Calculates the **Energy ($E$)** of the current generative action.
+    * $E = 0.0$: Logical self-consistency achieved (**QED**).
+    * $E > 0.0$: Logical violation detected (e.g., "Odd + Odd = Odd").
 
-## 📐 The Evolution: From Accumulators to Neural Evolution
-The core mathematical primitives of Evolver have undergone a qualitative transformation from "membership proofs" to "semantic logical evolution." Below is the evolutionary path of the core formulas:
-
-### 1. The Accumulator Primitive
-In early protocol designs (see `HTP.md`), the focus was on processing the temporal accumulation of members ($P_{agent}$):
-
-$$T_{\text{next}} = (T_{\text{prev}}^{P_{\text{agent}}} \cdot G^{H(\text{depth})}) \pmod \Delta$$
-
-**Meaning:** The state $T$ evolves with the addition of agent $P$, and is injected with non-commutative temporal noise via depth $H(\text{depth})$.
-
-### 2. Semantic Evolution
-In Phase 3 (Evolutionary Neural System), we reconstructed this formula into a neuronal activation function. Evolution is no longer simple storage, but the non-commutative interaction of semantic weights:
-
-$$S_{out} = S_{in}^{P_{weight}} \cdot G^{H(t)} \pmod \Delta$$
-
-* **$S_{in}$ (Context State):** The algebraic stream of input, carrying the preceding contextual logic.
-* **$P_{weight}$ (Semantic Fingerprint):** The "weight" of the neuron. Unlike floating-point weights, this is a massive prime number representing the neuron's specific operation on semantics (e.g., "logical inversion" or "conceptual abstraction").
-* **$G^{H(t)}$ (Spacetime Noise):** Injects spacetime depth noise to ensure that "A leads to B" is algebraically distinct from "B leads to A" (non-commutativity).
+### 3. The Bias Controller (Alignment Sidecar)
+* **Code**: `src/control/bias_channel.rs`
+* **Role**: The "Driver" of the system.
+* **Principle**: Based on **Theorem 5.7 (Controllability Theorem)**. While core Logits remain chaotic, the output coordinates can be precisely controlled by superimposing a linear **Bias Vector** ($\vec{b}$).
+* **Algorithm**: **VAPO** (Valuation-Adaptive Perturbation Optimization).
+    * Performs gradient-free search within the discrete STP constraint space.
+    * Dynamically adjusts perturbation magnitude (Low-valuation vs. High-valuation bits) to minimize STP energy.
 
 ---
 
-## 🏗️ Phase 3: Evolutionary Neural System Architecture
-Based on the latest source code (`src/phase3/structure.rs`, `decoder.rs`), Evolver now possesses full generative capabilities:
+## 🛠️ Implementation & Tech Stack
 
-### 1. Evolutionary Layer & Neurons
-* **RwLock Architecture:** Unlike traditional matrix multiplication, each layer consists of independent `HTPNeuron` units. They process algebraic tuples in parallel and undergo safe structural mutations via `RwLock` during training.
-* **Holographic Collapse:** Each neuron maintains a miniature **HyperTensor**. Through a sparse **Fold** algorithm, infinite context is compressed into a unique **Global Root**.
+Built on **Rust**, emphasizing type safety and zero-cost abstractions.
 
-### 2. Inverse Decoder
-* **Generation as Navigation:** While Transformers retrieve the most probable word via Softmax, Evolver locates coordinates in algebraic space through **Inverse Decoding**.
-* **Spatial Indexing:**
-    1.  The model outputs a high-dimensional algebraic root.
-    2.  The `InverseDecoder` calculates the corresponding tensor **Coordinate**.
-    3.  The **KNN (K-Nearest Neighbors)** algorithm is used to find the nearest legal Token within the `VocabularyTensor`.
+### DSL: Proof Action Definition (`src/dsl/schema.rs`)
+The system interacts with the algebraic world via a strictly defined DSL to eliminate natural language ambiguity.
 
-### 3. Evolutionary Training
-* **Punish Path Mutation:**
-    Instead of Backpropagation, we employ evolutionary strategies.
-    * **Correct Inference:** The path is preserved (reward).
-    * **Incorrect Inference (Hallucination):** Triggers `punish_path_mutation`. The system randomly resets the neuron's prime weights ($P_{weight}$), forcing the network to find a new algebraic path to close the logical loop.
+```rust
+pub enum ProofAction {
+    Define { symbol: String, hierarchy_path: Vec<String> }, // Entity definition (v-PuNNs)
+    Assert { subject: String, relation: String, object: String }, // Logical assertion
+    Apply { theorem_id: String, inputs: Vec<String>, output_symbol: String }, // Theorem application
+    Branch { case_id: String, sub_proof: Vec<ProofAction> }, // Branch exploration
+    QED,
+}
+```
 
----
-
-## 🧩 Technical Specifications
-
-### Affine Tuple
-All computational units are no longer scalars but affine tuples $\mathcal{A} = (P, Q)$, following a non-commutative associative law:
-
-$$\mathcal{A}_1 \oplus \mathcal{A}_2 = (P_1 \cdot P_2, \quad Q_1^{P_2} \cdot Q_2)$$
-
-### Proof-Carrying Code
-According to `SPECIFICATION.md`, every output is accompanied by a **ProofBundle** of approximately 280 Bytes:
-* **Primary Path:** A Merkle-style path along the challenge axis.
-* **Orthogonal Anchors:** Aggregated roots of orthogonal dimensions.
-* **Consistency:** Verifies that $\text{Fold}_y(\text{Slice}_y) \equiv \text{GlobalRoot}$.
-
-If verification fails, it indicates the model has produced a "mathematical hallucination," and the output is discarded immediately.
+### VAPO Optimization Loop (`src/control/bias_channel.rs`)
+The heart of the system. When the Generator produces an erroneous intent, VAPO intervenes:
+1.  **Detect**: STP Engine calculates high energy ($E > 0$).
+2.  **Perturb**: VAPO generates a bias perturbation based on energy magnitude: $\vec{b}_{new} = \vec{b}_{old} + \Delta$.
+3.  **Project**: Projects the Bias into Logit space: $L_{final} = L_{raw} + W_{proj} \cdot \vec{b}$.
+4.  **Decode**: Decodes the new action $A'$.
+5.  **Verify**: Recalculates energy. Loops until $E \approx 0$.
 
 ---
 
-## ⚡ Performance Comparison
+## 🚀 Quick Start
 
-| Feature | Transformer (Attention Mechanism) | Evolver (HTP Mechanism) |
-| :--- | :--- | :--- |
-| **Core Logic** | Statistics | Algebraic Evolution |
-| **Weight Form** | Float Matrices (Float32) | Large Prime Fingerprints |
-| **Context Window** | Limited by $O(N^2)$ Attention | Infinite ($O(\log N)$ Holographic Fold) |
-| **Hallucination** | Inherent (Feature) | Mathematical Error (Detected) |
-| **Training** | Backpropagation (BP) | Structural Mutation |
+### Dependencies
+* Rust (1.70+)
+* `serde`, `rand`, `num-integer`
+
+### Run Demo
+The main program (`src/main.rs`) simulates a classic mathematical proof: *"Prove that the sum of two odd numbers is even."*
+
+```bash
+cargo run
+```
+
+### Expected Output
+The system demonstrates the Generator "erring" and the Bias Controller "correcting" it:
+
+```plaintext
+🐱 New Evolver System Initializing...
+--------------------------------------------------
+[Init] STP Context loaded with theorems: ModAdd, Equals...
+[Init] VAPO Controller ready (Bias Dim: 16)
+
+📝 Mission: Prove that the sum of two Odd numbers is Even.
+[Step 1] Generator defined 'n' as Odd. Energy: 0.0 (OK)
+[Step 2] Generator defined 'm' as Odd. Energy: 0.0 (OK)
+
+⚠️  [Step 3] Generating inference step...
+   -> Raw Generator intent: Define 'sum' as Odd.
+   -> STP Check: VIOLATION detected! (Odd + Odd != Odd)
+
+🛡️  [VAPO] Bias Controller Engaging...
+   -> Optimization loop... (Temperature: 2.0)
+   -> Found correction vector.
+
+✅ [Result] Optimization Complete.
+   -> Final Action: Define { symbol: "sum_truth", hierarchy_path: ["Number", "Integer", "Even"] }
+   -> Applied Bias Vector: [0, 1, -1, 0, ...]
+   -> Logic is now ALIGNED.
+```
 
 ---
 
-## 🗺️ Project Status
-* [x] **Phase 0: Foundation** (Math Primitives, Class Groups, HTP Core)
-* [x] **Phase 1: Topology** (Sparse Hyper-Tensor, Segment Tree Folding)
-* [x] **Phase 2: The Probe** (Attention-to-Prime Quantization)
-* [x] **Phase 3: Evolutionary Neural System** (Current Focus)
-    * [x] `HTPModel` & `EvolutionaryLayer` implementation.
-    * [x] `InverseDecoder` and KNN addressing.
-    * [x] `EvolutionaryTrainer` mutation logic.
-* [ ] Large-scale distributed training tests.
+## ⚖️ Theoretical Foundation
+
+### Security vs. Trainability
+We resolve a core paradox:
+* **Security** relies on the chaotic nature of algebraic structures (Non-commutative Evolution).
+* **Trainability** relies on the smoothness of mapping (Lipschitz Continuity).
+
+**Solution: "The Engineering Cheat"**
+We preserve the chaotic core of $Cl(\Delta)$ but introduce a **Linear Bias Channel** at the output layer. See `Security vs. Trainability.md` for a detailed breakdown.
+
+### HTP Protocol
+Based on `THEORY.md`, all state transitions follow a dual-operator architecture:
+* **Time Operator ($\oplus$)**: Non-commutative (History Sensitive).
+* **Space Operator ($\otimes$)**: Commutative (Holographic Aggregation).
 
 ---
 
-## ⚖️ License
+## 📜 License
 **M-Patek PROPRIETARY LICENSE**
-Copyright © 2025 M-Patek Research. All Rights Reserved.
+Copyright © 2025 M-Patek. All Rights Reserved.
+*(See LICENSE file for details - Evaluation Only)*
 
-*Rebuilding Intelligence, One Prime at a Time.*
+"Rebuilding Intelligence, One Bias Vector at a Time." 🐾
