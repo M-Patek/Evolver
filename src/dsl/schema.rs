@@ -1,4 +1,4 @@
-// Evolver Proof DSL Schema Definition
+// src/dsl/schema.rs
 // 这是一个严格类型的中间表示 (IR)，连接生成器 (Generator) 与约束器 (Constraint Checker)。
 // 每一个 Action 都能被无歧义地编译为 STP 矩阵运算或 p-进树跳转。
 
