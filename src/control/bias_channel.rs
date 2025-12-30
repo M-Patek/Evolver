@@ -5,14 +5,20 @@ use std::f64::consts::PI;
 /// ASC (Adaptive Subspace Commutation) Projector
 /// 
 /// 既然静态的低维投影无法覆盖全空间，我们让投影矩阵动态追踪
-/// 能量梯度的方向。这就好比一个自动瞄准的炮台。
+/// 能量梯度的方向。
+/// 
+/// [THEORY NOTE]: 
+/// 这里的“梯度”并非真实的逻辑能量梯度（因为 Argmax 导致真实梯度为 0）。
+/// 这里使用的是 "Surrogate Gradient" (代理梯度)，即 Embedding 空间中的 L2 距离梯度。
+/// 我们假设：如果让 Logits 在向量空间更接近目标，通过 Argmax 后命中正确逻辑的概率也会增加。
 #[derive(Debug, Clone)]
 pub struct BiasProjector {
     /// 投影矩阵 W: [logit_dim x bias_dim]
     /// 将低维控制信号映射到高维 Logit 空间
     projection_matrix: Matrix,
     
-    /// 动量缓存，用于平滑旋转，防止投影矩阵剧烈抖动
+    /// 动量缓存
+    /// 作用：平滑随机梯度的抖动，模拟 "Stochastic Smoothing" 效应。
     momentum: Matrix,
     
     /// 维度配置
@@ -53,27 +59,24 @@ impl BiasProjector {
     /// 核心修复：自适应旋转 (Adaptive Rotation)
     /// 
     /// 当 VAPO 无法将能量降为 0 时，说明最优解在当前的控制子空间之外。
-    /// 此函数接收 Logit 空间的能量梯度 (residual)，并将子空间向该梯度方向“倾斜”。
+    /// 此函数接收 Embedding 空间的能量梯度 (residual)，并将子空间向该梯度方向“倾斜”。
     /// 
     /// Math: W_new = W + alpha * (Residual * b_active^T)
+    /// 注意：这是一个 Hebbian 学习规则的变体。
     pub fn rotate_towards_gradient(&mut self, residual: &Vector, active_bias: &Vector) {
-        // 1. 计算我们想要的 Logit 修正方向 (Residual)
+        // 1. 计算我们想要的 Logit 修正方向 (Residual of Surrogate Loss)
         // residual 是 [output_dim] 向量
         
         // 2. 计算当前的 Bias 激活状态
         // active_bias 是 [input_dim] 向量
-        // 如果 bias 是零，我们不知道旋转哪一列，所以只在 bias 活跃时旋转
         
         // 3. 计算秩-1 更新量 (Rank-1 Update)
         // Update = Residual \otimes Bias^T
         // 这是一个外积，结果是 [output_dim x input_dim] 的矩阵
         
-        // 简单的 Hebbian 风格更新：
-        // 那些导致了高误差(Residual)的 Bias 分量，其对应的投影列向量应该向 Residual 方向靠拢。
-        
         let mut update = Matrix::zeros(self.output_dim, self.input_dim);
         
-        // 计算外积并应用动量
+        // 计算外积
         for r in 0..self.output_dim {
             for c in 0..self.input_dim {
                 let grad = residual[r] * active_bias[c];
@@ -81,19 +84,20 @@ impl BiasProjector {
             }
         }
         
-        // 4. 应用更新
+        // 4. 应用更新 (Stochastic Gradient Step)
         // W_{t+1} = W_t - \alpha * \nabla W
         // 这里我们要 *最大化* 覆盖率，所以是让 W 对齐 Residual
         
         for r in 0..self.output_dim {
             for c in 0..self.input_dim {
+                // 使用 alpha 控制步长，实现平滑移动
                 self.projection_matrix[r][c] += self.alpha * update[r][c];
             }
         }
 
         // 5. 重新正交化
-        // 这一步至关重要！否则矩阵会坍缩，失去覆盖能力。
-        // 我们希望改变方向，但不改变体积。
+        // 这一步至关重要！它保证了我们是在旋转子空间，而不是让它坍缩或无限增长。
+        // 这维持了控制信号的等距性质 (Isometry)。
         self.orthonormalize();
     }
 
