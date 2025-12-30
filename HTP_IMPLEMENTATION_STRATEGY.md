@@ -2,73 +2,77 @@
 
 **Core Philosophy:** "The Control Law is invariant under the choice of the underlying Group."
 
-This document clarifies why the Evolver system can rigorously validate its Neuro-Symbolic alignment logic (Phase 1) without immediately implementing the full cryptographic primitives of the Hyper-Tensor Protocol (Phase 2).
-
----
+This document outlines the roadmap from the current logical prototype (Phase 1) to the cryptographic final form (Phase 2), with a special focus on the role of the Neural Guide.
 
 ## 1. The Abstraction of Chaos
 
-The Evolver architecture is designed with a strict separation of concerns:
-* **The Controller (VAPO):** Observes energy gradients and outputs bias vectors.
-* **The Plant (HTP Core):** Accepts actions and evolves the state.
+The Evolver architecture separates concerns:
+
+* **The Controller (VAPO):** Observes energy and outputs bias.
+* **The Plant (HTP Core):** Accepts actions and evolves state.
 
 ### Why the Specific Group Doesn't Matter (Yet)
-The Bias Controller relies on **Theorem 5.7 (Controllability)**. This theorem states that for any target state in a coordinate space, there exists a bias vector $\vec{b}$ that can map the chaotic output to it.
 
-Mathematically, the Controller treats the HTP Core as a "Black Box" function $F(x)$:
+The Bias Controller relies on Controllability, not Differentiability.
+The controller treats the HTP Core as a "Black Box" function $F(x)$:
 
-$$State_{next} = F(State_{current}, Action + Bias)$$
+$$
+State_{next} = F(State_{current}, Action + Bias)
+$$
 
-For the purpose of validating the VAPO Algorithm, we only need $F(x)$ to satisfy two properties:
-1.  **Determinism:** Same input $\rightarrow$ Same output.
-2.  **Algebraic Consistency:** It follows Group Axioms (Associativity, Identity, Invertibility).
+Whether $F(x)$ is a simple Matrix Multiplication (Phase 1) or a Class Group Operation (Phase 2), the control problem remains a Discrete Search Problem.
 
-Whether $F(x)$ is implemented using Class Groups ($Cl(\Delta)$) or Simple Matrix Multiplication ($GL(n, \mathbb{Z})$), the dynamics of the control loop remain identical. If VAPO can stabilize a simple matrix system, it can mathematically stabilize a Class Group system.
+## 2. Phase 1.5: Neural Guidance (The "Proposer" Update)
 
----
+### Crucial Correction:
+In previous iterations, it was tempting to treat the Controller as a gradient-descent optimizer. However, since the STP Energy surface is Discrete (Step Functions) and Non-Differentiable, gradients do not exist.
 
-## 2. Phase 1: Logic Verification (Current Status)
+### The Solution: Neural-Guided Search
+Instead of backpropagation, we implement a Predictor-Corrector architecture:
 
-**Goal:** Prove that a chaotic generator can be forced to follow strict logical rules via external bias.
+**The Transformer (Predictor):**
 
-In this phase, we use a **"Mock Chaos"** backend:
-* **Time Operator:** $A * B$ (Matrix Multiplication or Linear Congruential Generator).
-* **Space Operator:** $A + B$ (Vector Addition).
-* **Commitment:** DefaultHasher (Rust std lib).
+* Acts as a Heuristic Function or Intuition.
+* Learns the mapping:
 
-**Justification:**
-* **Speed:** Matrix operations are $\approx 1000x$ faster than Class Group composition, allowing rapid iteration of the VAPO hyperparameters.
-* **Debuggability:** We can easily reverse-engineer a matrix state to see why a specific logic failed, which is impossible with cryptographic one-way functions.
-* **Sufficient Complexity:** A random matrix group is already sufficiently "chaotic" to test if the Bias Controller can overcome non-linear trajectories.
+$$
+\text{Context} \to P(\vec{b}_{\text{optimal}})
+$$
 
----
+* **Output:** A "Proposal" (A starting point for the search).
+
+**VAPO (Corrector):**
+
+* Acts as the Solver.
+* Takes the Proposal and performs local stochastic search (Metropolis-Hastings) to find the exact zero-energy solution.
+
+### Why this works:
+
+* **Search Space Reduction:** The Transformer reduces the search volume from "Infinite" to "Local Neighborhood".
+* **Hardness Preservation:** The actual verification logic remains in the rigorous STP engine, ensuring the Transformer's "guesses" are never trusted blindly.
 
 ## 3. Phase 2: Cryptographic Hardness (Target)
 
-**Goal:** Ensure the history cannot be rewritten (Time Security) and proofs can be folded (Space Holography).
+* **Goal:** Ensure the history cannot be rewritten (Time Security).
+* **Time Operator:** Composition of quadratic forms
 
-In this phase, we swap the backend for **Class Groups of Imaginary Quadratic Fields**:
-* **Time Operator:** Composition of quadratic forms $(a, b, c)$.
-* **Hidden Order:** We rely on the difficulty of finding the order of the group to prevent "time travel" (computing inverse operations efficiently).
-* **VDF Properties:** Verifiable Delay Functions ensure the proof generation required actual sequential work.
+$$
+(a, b, c)
+$$
 
-### The "Drop-In" Replacement
-Because the entire system communicates via the **HTP Interface** (defined in `src/dsl/stp_bridge.rs`), switching from Mock Algebra to Class Group Algebra is a software engineering task, not a research task.
+* **Hidden Order:** Rely on the difficulty of finding class number
 
-```rust
-// Current (Phase 1)
-type AlgebraicState = Matrix<f64>; 
+$$
+h(\Delta)
+$$
 
-// Future (Phase 2)
-type AlgebraicState = ClassGroupElement<Discriminant>; 
-```
-
-The Bias Controller does not need to change a single line of code, as it operates on the **Energy Surface** produced by the state, not the state itself.
-
----
+Because the Intuition Engine (Transformer) only provides proposals and does not touch the internal algebra, switching from Matrix to Class Groups does not break the neural network. The network simply learns a new proposal distribution for the new algebraic structure.
 
 ## 4. Conclusion
 
-We are currently validating the **Control Theory** aspect of Evolver. The Cryptographic Security is a modular component that will be plugged in once the control loop is proven stable.
+We are building a Neurally-Guided Symbolic Search System.
 
-**Summary:** We use "Simulated Chaos" to train the Pilot (Controller). Once the Pilot is ready, we will put them in the real F-22 Raptor (Class Groups).
+* **Logic:** Hard, Discrete, Algebraic.
+* **Control:** Soft, Probabilistic, Heuristic.
+
+The Transformer is the map; VAPO is the compass; STP is the terrain.
