@@ -12,7 +12,7 @@ use control::bias_channel::{BiasController, VapoConfig};
 const ACTION_SPACE_SIZE: usize = 1024;
 
 fn main() {
-    println!("🐱 New Evolver System Initializing...");
+    println!("🐱 New Evolver System Initializing (v0.2 Compatible)...");
     println!("--------------------------------------------------");
 
     // 1. 初始化代数环境
@@ -20,7 +20,7 @@ fn main() {
     println!("[Init] STP Context loaded with theorems: ModAdd, Equals...");
 
     // 2. 初始化 VAPO 控制器
-    let mut controller = BiasController::new(Some(VapoConfig {
+    let controller = BiasController::new(Some(VapoConfig {
         max_iterations: 100,
         initial_temperature: 2.0,
         valuation_decay: 0.95,
@@ -30,14 +30,18 @@ fn main() {
     // ------------------------------------------------------------------
     // 场景模拟：证明 "两个奇数之和是偶数"
     // ------------------------------------------------------------------
-    println!("\n📝 Mission: Prove that the sum of two Odd numbers is Even.");
+    // [New v0.2] 定义任务上下文和执行种子
+    let mission_context = "Prove that the sum of two Odd numbers is Even";
+    let execution_seed = 123456789; // 固定种子，确保每次运行结果一致
+
+    println!("\n📝 Mission: {}.", mission_context);
 
     // Step 1: 定义 n (Odd)
     let action_step1 = ProofAction::Define {
         symbol: "n".to_string(),
         hierarchy_path: vec!["Number".to_string(), "Integer".to_string(), "Odd".to_string()],
     };
-    stp_ctx.calculate_energy(&action_step1); // &mut borrow
+    stp_ctx.calculate_energy(&action_step1); 
     println!("[Step 1] Generator defined 'n' as Odd. Energy: 0.0 (OK)");
 
     // Step 2: 定义 m (Odd)
@@ -45,7 +49,7 @@ fn main() {
         symbol: "m".to_string(),
         hierarchy_path: vec!["Number".to_string(), "Integer".to_string(), "Odd".to_string()],
     };
-    stp_ctx.calculate_energy(&action_step2); // &mut borrow
+    stp_ctx.calculate_energy(&action_step2); 
     println!("[Step 2] Generator defined 'm' as Odd. Energy: 0.0 (OK)");
 
     // ------------------------------------------------------------------
@@ -55,16 +59,18 @@ fn main() {
 
     // 模拟 Generator 的原始 Logits (倾向于错误)
     let mut raw_logits = vec![0.0; ACTION_SPACE_SIZE];
-    raw_logits[0] = 5.0;  // Index 0: Define "sum" as Odd (WRONG)
-    raw_logits[1] = -2.0; // Index 1: Define "sum" as Even (CORRECT)
+    raw_logits[0] = 5.0;  // Index 0: Define "sum_truth" as Odd (WRONG)
+    raw_logits[1] = -2.0; // Index 1: Define "sum_truth" as Even (CORRECT)
 
-    // 为了让 bridge 检测冲突，我们先让环境知道 n+m 应该是 Even
-    // 我们手动执行一次 Apply 使得 "sum" 被预期为 Even (这里为了演示简化处理)
-    // 实际上 stp_bridge.rs 里的 check_inference_consistency 会动态计算 inputs
-    // 但在 Definition 检查中，我们需要先有定义。
-    // 这里我们假设 Generator 试图 Define 一个叫 "sum_truth" 的变量
-    
-    // 定义解码器
+    // 注册约束：告诉 STP 我们正在计算 ModAdd(n, m) -> sum_truth
+    // 这使得 calculate_energy 知道去检查 n 和 m 的异或关系
+    stp_ctx.calculate_energy(&ProofAction::Apply {
+        theorem_id: "ModAdd".to_string(),
+        inputs: vec!["n".to_string(), "m".to_string()],
+        output_symbol: "sum_truth".to_string(),
+    });
+
+    // 定义解码器闭包
     let decode_fn = |logits: &[f64]| -> ProofAction {
         let max_idx = logits.iter().enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
@@ -75,7 +81,7 @@ fn main() {
             // 错误幻觉: 认为 Odd + Odd = Odd
             ProofAction::Define { 
                 symbol: "sum_truth".to_string(), 
-                hierarchy_path: vec!["Odd".to_string()] // 简化路径匹配 Mock
+                hierarchy_path: vec!["Odd".to_string()] 
             }
         } else {
             // 正确逻辑
@@ -85,19 +91,6 @@ fn main() {
             }
         }
     };
-    
-    // 必须告诉 STPContext，我们正在检查关于 (n, m) 的加法结果
-    // 这是一个 trick：我们在 optimize 内部或者外部，需要一个 Apply 动作来建立约束
-    // 为了演示，我们在 bridge 里通过 "Apply ModAdd n m -> sum_truth" 来触发检查
-    // 所以我们需要构造一个特殊的场景：
-    // Generator 输出的是 Apply 动作，或者我们显式地让 STP 检查这个 Define 是否符合 Apply 的结果。
-    // 在 stp_bridge.rs 的修复版中，我们让 calculate_energy 支持 check_inference_consistency。
-    // 我们在这里先注册 n+m 的逻辑约束：
-    stp_ctx.calculate_energy(&ProofAction::Apply {
-        theorem_id: "ModAdd".to_string(),
-        inputs: vec!["n".to_string(), "m".to_string()],
-        output_symbol: "sum_truth".to_string(),
-    });
 
     println!("   -> Raw Generator intent: Define 'sum_truth' as Odd.");
     println!("   -> STP Check: VIOLATION detected! (Odd + Odd != Odd)");
@@ -107,11 +100,18 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n🛡️  [VAPO] Bias Controller Engaging...");
 
-    // 调用 controller.optimize
-    let (final_bias, final_action) = controller.optimize(&raw_logits, &mut stp_ctx, decode_fn);
+    // [Fix] 调用 v0.2 optimize，传入 context 和 seed
+    let proof = controller.optimize(
+        mission_context,
+        execution_seed,
+        &raw_logits, 
+        &mut stp_ctx, 
+        decode_fn
+    );
 
     println!("\n✅ [Result] Optimization Complete.");
-    println!("   -> Final Action: {:?}", final_action);
-    println!("   -> Applied Bias Vector: {:?}", final_bias.data);
+    println!("   -> Final Action: {:?}", proof.action);
+    println!("   -> Applied Bias Vector: {:?}", proof.bias_vector);
+    println!("   -> Context Hash: {}", proof.context_hash); // 验证绑定
     println!("   -> Logic is now ALIGNED.");
 }
