@@ -1,60 +1,90 @@
-# THEORY PATCH: The Optimization Problem Statement
+THEORY PATCH: The Optimization Problem Statement
 
-Formalizing VAPO as a Constrained Minimization
+Formalizing VAPO as a Variable Neighborhood Search (VNS)
 
-## 1. The Missing Formulation
+1. The Formulation
 
-The code implements a search loop, but fails to state the mathematical problem.
-We define the Bias Controller's task as solving the following optimization problem at each time step $t$.
+The Bias Controller solves a Black-Box Discrete Optimization problem at each time step $t$. We explicitly acknowledge that the objective function is non-differentiable and terraced.
 
-## 2. Problem Variables
+2. Problem Variables
 
-**Decision Variable:** $\vec{b} \in \mathbb{Z}_L^k$ (Discrete Bias Vector on Torus).
+Decision Variable:
+$\vec{b} \in \mathbb{Z}_L^k$
+(Discrete Bias Vector on Torus).
 
-**Constants:**
-* $z_0 \in \mathbb{R}^V$: Base logits from Generator.
-* $P \in \mathbb{R}^{V \times k}$: Projection matrix.
-* $s_t$: Current STP algebraic state.
+Constants:
 
-## 3. The Objective Function
+$z_0 \in \mathbb{R}^V$
+: Base logits from Generator.
 
-The objective $J(\vec{b})$ is a composite Lagrangian:
+$P \in \mathbb{R}^{V \times k}$
+: Projection matrix (The "Canon").
 
-$$J(\vec{b}) = \underbrace{\mathcal{E}_{STP}(s_t, \Pi(z_0 + P\vec{b}))}_{\text{Logical Violation}} + \lambda \cdot \underbrace{\mathcal{V}_{p}(\vec{b})}_{\text{Hierarchical Cost}}$$
+$s_t$
+: Current STP algebraic state.
 
-* $\Pi$: The Voronoi Decoder (Argmax).
-* $\mathcal{E}_{STP}$: The Energy functional ($0$ if valid, $>0$ if invalid).
-* $\mathcal{V}_{p}$: The p-adic Valuation Cost.
+3. The Objective Function
 
-We prefer "fine-tuning" (high valuation, small $p$-adic norm) over "structural changes".
-$\mathcal{V}_{p}(\vec{b}) = \sum -v_p(b_i)$ (Approximation).
+The objective $J(\vec{b})$ is a composite Lagrangian with a Hard Logic Barrier:
 
-## 4. Constraints
+$$J(\vec{b}) = \underbrace{\mathcal{E}_{STP}(s_t, \Pi(z_0 + P\vec{b}))}_{\text{Discrete Step Function}} + \lambda \cdot \underbrace{\mathcal{V}_{p}(\vec{b})}_{\text{Regularization}}$$
 
-* **Hard Constraint (Logic):** The search must eventually satisfy $\mathcal{E}_{STP} = 0$.
-* **Domain Constraint:** $\vec{b} \in [0, L)^k$ (Torus boundary).
-* **Budget Constraint:** $N_{iter} \le N_{max}$ (Real-time limit).
+$\Pi$
+: The Voronoi Decoder (Argmax).
 
-## 5. VAPO as a Solver Algorithm
+$\mathcal{E}_{STP}$
+: The Energy functional ($0$ if valid, $>0$ if invalid).
 
-Since $\Pi$ is discontinuous (step function), $J(\vec{b})$ is non-differentiable and terraced. Gradient Descent is inapplicable.
+$\mathcal{V}_{p}$
+: The p-adic Valuation Cost. We prefer "fine-tuning" (high valuation perturbations) over "structural changes" (low valuation perturbations).
 
-VAPO (Valuation-Adaptive Perturbation Optimization) is formally defined as a Variable Neighborhood Search (VNS) algorithm:
+4. Constraints
 
-**State:** Current solution $\vec{b}_{curr}$.
+Hard Constraint (Logic): The search loop must eventually find $\vec{b}^*$ such that
+$\mathcal{E}_{STP}(\vec{b}^*) = 0$
+.
 
-**Neighborhood Structure $\mathcal{N}_k(\vec{b})$:**
-Defined by p-adic valuation levels.
-* $\mathcal{N}_0$: Perturb lowest bits (Global jumps).
-* $\mathcal{N}_{max}$: Perturb highest bits (Local jitter).
+Domain Constraint:
+$\vec{b} \in [0, L)^k$
+(Torus boundary).
 
-**Adaptive Rule:**
-* If $J(\vec{b})$ is high, select $\mathcal{N}_0$ (Coarse search).
-* If $J(\vec{b})$ is low but $>0$, select $\mathcal{N}_{high}$ (Fine search).
+Budget Constraint:
+$N_{iter} \le N_{max}$
+(Real-time limit).
 
-## 6. Code Implication: Explicit Cost Function
+5. VAPO as a Solver Algorithm
 
-The Rust implementation should explicitly separate the "Cost Evaluator" from the "Search Strategy".
+Since Gradient Descent is inapplicable to $J(\vec{b})$ directly, VAPO implements a Variable Neighborhood Search (VNS) strategy, jumping between "Surrogate Gradient Descent" and "Random Tunneling".
+
+Algorithm State: Current solution
+$\vec{b}_{curr}$
+.
+
+Modes of Operation:
+
+Surrogate Descent (Fine-Tuning):
+
+Assumption: Locally, the embedding space gradient approximates the logical gradient.
+
+Action: b_new = b_curr - alpha * project(residual)
+
+Effective when:
+$E > 0$
+but small (near the correct semantic cluster).
+
+Stochastic Tunneling (Coarse Jump):
+
+Assumption: Stuck in a local minimum (Logic Trap).
+
+Action: Apply a perturbation to Low-Valuation bits (Large $p$-adic distance).
+
+Effective when:
+$E$
+is high or stalled.
+
+6. Code Implication: Explicit Cost Function
+
+The Rust implementation separates the "Cost Evaluator" from the "Search Strategy".
 
 ```rust
 struct OptimizationProblem<'a> {
@@ -63,7 +93,7 @@ struct OptimizationProblem<'a> {
 }
 
 impl<'a> OptimizationProblem<'a> {
-    /// Evaluates J(b)
+    /// Evaluates J(b). Note: This step function has zero gradient usually.
     fn evaluate(&self, bias: &BiasVector) -> f64 {
         let action = self.decode(bias);
         let energy = self.stp_ctx.energy(&action);
