@@ -1,114 +1,101 @@
 # THEORY PATCH: The Neuro-Symbolic Fibration
 
-Closing the Structural Hole between $\mathbb{R}^V$, $A$, and $S$
+Closing the Structural Hole between $\mathbb{R}^V$, $A$, and $S$ via Verbalization
 
 ## 1. Problem Identification: The Type Gap
 
-The current system operates on three disjoint sets without a unifying morphism:
+The previous iteration of this theory committed a category error by conflating the Token Manifold ($\mathbb{R}^V$) with the Logical Fiber ($A|_s$).
 
-* **The Manifold** $L \cong \mathbb{R}^V$: The space of raw logits (Log-probabilities).
-* **The Lattice** $A$: The discrete set of valid ProofActions.
-* **The Module** $S$: The STP algebraic state space.
+* **The Manifold $L \cong \mathbb{R}^V$**: The continuous space of raw logits (Log-probabilities) over the Vocabulary. Dimension $V \approx 32,000+$.
+* **The Lattice $A$**: The discrete set of valid ProofActions (Schema Objects).
+* **The Module $S$**: The STP algebraic state space.
 
-**The Hole:** The mappings $f: L \to A$ (Decoding) and $g: A \to S$ (Transition) are currently treated as external engineering functions. We lack a closed topological definition where $L, A, S$ are objects of the same Category $\mathcal{C}_{Evolver}$.
+**The Fix**: We introduce an explicit Verbalizer Map ($\nu$) to bridge the continuous manifold of the LLM and the discrete fiber of the Algebra.
 
 ---
 
-## 2. The Mathematical Closure: Fiber Bundles
+## 2. The Mathematical Closure: Fiber Bundles with Verbalization
 
-To close this gap, we redefine the system as a Principal Bundle structure.
+We redefine the system as a Verbalized Principal Bundle.
 
 ### 2.1 The Base Space: Algebraic Truth ($S$)
-Let the STP State Space $S$ be the Base Manifold (or Base Scheme).
-Points $s \in S$ are valid algebraic states (e.g., "n is Odd").
-Movement in $S$ is governed by the matrix equation $s_{t+1} = M \ltimes u \ltimes s_t$.
+
+Let the STP State Space $S$ be the Base Manifold.
+Points $s \in S$ are valid algebraic states.
+Movement is governed by:
+
+$$s_{t+1} = M \ltimes u \ltimes s_t$$
 
 ### 2.2 The Discrete Fiber: Action Schemas ($A|_s$)
-At any state $s \in S$, not all actions in the universe $A_{univ}$ are topologically valid.
-We define the Action Fiber at $s$ as:
+
+At any state $s \in S$, we define the Admissible Action Fiber:
 
 $$A|_s = \{ a \in A_{univ} \mid \text{Energy}(s, a) < \epsilon \}$$
 
-This creates a **Sheaf of Actions** over $S$.
+This creates a discrete Sheaf of Actions over $S$.
 
-### 2.3 The Continuous Bundle: Logit Distributions ($L|_s$)
-We redefine Logits not as a detached vector space, but as a Probability Measure over the Fiber $A|_s$.
-The Logit Space $L$ is the total space of a bundle $E \xrightarrow{\pi} S$, where the fiber at $s$ is the tangent space of the probability simplex over valid actions:
+### 2.3 The Missing Link: The Verbalizer ($\nu$)
 
-$$L|_s \cong T(\Delta^{|A|_s| - 1})$$
+This was the missing component. We cannot directly compare a Logit Vector $z \in \mathbb{R}^V$ to an Action Object $a \in A|_s$.
+
+We define the Verbalization Map (or Action Embedding) $\nu$:
+
+$$\nu: A_{univ} \to \mathbb{R}^V$$
+
+For a given action $a$ (e.g., Define { symbol: "n", ... }), $\nu(a)$ returns its Prototype Vector in the vocabulary space.
+
+* **In Engineering**: This is the embedding of the token sequence corresponding to the action, or a mask vector.
+* **In Topology**: This maps the discrete fiber nodes into points (or regions) in the continuous manifold $\mathbb{R}^V$.
 
 ---
 
 ## 3. The Unifying Morphism: The "Section"
 
-In this formalism, the "Generator" (LLM) is no longer a black box. It is a **Section** (截面) of the bundle.
+In this formalism, the "Generator" (LLM) is a Section ($\sigma$) that points towards the verbalized fiber.
 
-$$\sigma: S \to L$$
+$$\sigma: S \to \mathbb{R}^V$$
 
-The generator observes the current algebraic state $s$ and selects a distribution $l \in L|_s$.
+### 3.1 The Projection (Decoder): Pullback via Verbalization
 
-### 3.1 The Projection (Decoder): Voronoi Retraction
-To strictly define the morphism $L \to A$ without breaking the bundle topology, the Decoder $\Pi$ must be defined as a **Deterministic Retraction** associated with a Voronoi Tessellation.
+The Decoder $\Pi$ is no longer a naive Voronoi partition of $\mathbb{R}^V$. It is defined as the Argmax of the Pullback:
 
-We verify that $L|_s \cong \mathbb{R}^V$. For each valid action $a_i \in A|_s$, we associate a characteristic vector $v_{a_i}$ (e.g., one-hot encoding). The decoder partitions the continuous fiber $L|_s$ into **Action Cells**:
+Given a generated logit vector $z = \sigma(s)$, the decoder selects the action $a^*$ that maximizes alignment with the verbalizer:
 
-$$Cell(a_i) = \{ z \in L|_s \mid \forall j \neq i, \langle z, v_{a_i} \rangle > \langle z, v_{a_j} \rangle \}$$
+$$\Pi(z, s) = \underset{a \in A|_s}{\text{argmax}} \langle z, \nu(a) \rangle$$
 
-The Decoder $\Pi$ is the map that collapses the entire cell to its singularity:
+**Constraint**: The search is strictly limited to $a \in A|_s$ (the valid fiber).
 
-$$\Pi(z) = a_i \iff z \in Cell(a_i)$$
-
-* **Mathematical Object:** $\Pi$ is a discontinuous section projection (Deterministic Retraction).
-* **Measure Theory:** It pushes forward the Lebesgue measure on $L|_s$ to a Dirac mass distribution on $A|_s$.
-* **Thermodynamics:** This corresponds to the limit of the Gibbs measure (Softmax) as Temperature $T \to 0$.
+**Geometry**: This defines a dynamic Voronoi tessellation on $\mathbb{R}^V$ where the "centers" are the verbalized points $\{ \nu(a) \}_{a \in A|_s}$.
 
 ### 3.2 The Transition (STP Dynamics)
-The STP update is a functor $F: A \to \text{End}(S)$.
 
-$$s_{t+1} = F(\Pi(\sigma(s_t))) \cdot s_t$$
+The loop is closed via:
+
+$$s_{t+1} = F(\Pi(\sigma(s), s)) \cdot s_t$$
 
 ---
 
 ## 4. Closing the Loop: The Bias Connection
 
-Here is where VAPO (Bias Controller) fits into the topology.
+How does VAPO control this?
 
-The structural hole exists because $\Pi$ (Argmax/Voronoi) is non-invertible and discontinuous at cell boundaries. The **Bias Vector** $\vec{b}$ acts as a **Connection Form** (联络形式) on the bundle.
+The Bias Vector $\vec{b}$ is an optimization variable acting on the Verbalized Manifold.
 
-It defines a Parallel Transport operation via translation. If the generator's section $\sigma(s)$ lands in a "high energy" (invalid) Voronoi cell, the Bias $\vec{b}$ translates the point across the boundary into a valid cell:
+* **Source**: VAPO calculates $\vec{b}_{ctrl}$ in the abstract control space.
+* **Verbalization**: The system projects this bias into the token space: 
 
-$$\sigma'(s) = \sigma(s) +_{\text{fiber}} \vec{b}$$
+$$\vec{b}_{logits} = W_{proj} \cdot \vec{b}_{ctrl}$$
 
-**Closure Theorem:**
-The system is structurally closed if and only if for every state $s$ and every valid target $s_{next}$, there exists a connection $\vec{b}$ such that:
+* **Note**: $W_{proj}$ serves as the linear approximation of the Verbalizer $\nu$ for the bias signal.
+* **Action**: The generator output is perturbed: 
 
-$$F(\Pi(\sigma(s) + \vec{b})) \cdot s = s_{next}$$
+$$z' = z + \vec{b}_{logits}$$
 
-This is exactly what Theorem 5.7 (Controllability) proves. The Bias Channel closes the topological hole by ensuring that the fiber $L|_s$ covers the entire neighborhood of valid transitions in $S$ via translation.
+* **Steering**: The perturbation shifts $z$ across the decision boundary of the Voronoi cells defined by $\Pi(\cdot, s)$.
 
----
+**Closure Theorem (Revised)**:
+Control is possible if the image of the Bias Verbalizer ($Im(W_{proj})$) has non-zero intersection with the normal vectors of the Voronoi boundaries in $\mathbb{R}^V$.
 
-## 5. Architectural Implication
+$$\exists \vec{b}, \quad \Pi(\sigma(s) + W_{proj}\vec{b}, s) = a_{target}$$
 
-We must strictly enforce that logits are NOT just `Vec<f64>`, but typed objects aware of their base state $S$.
-
-**Proposed Rust Type System:**
-
-```rust
-struct BundleState<S> {
-    base: S,                  // The STP State
-    fiber: ActionSchema<S>,   // Valid actions at this state
-}
-
-struct LogitSection<'a, S> {
-    bundle: &'a BundleState<S>,
-    distribution: Vec<f64>,   // R^V constrained to the fiber
-}
-
-trait Morphism<S> {
-    // The map L -> A must be aware of S to be valid
-    fn project(section: LogitSection<S>) -> ProofAction;
-}
-```
-
-This ensures that we never process logits "in a vacuum" ($\mathbb{R}^V$), but always as tangent vectors attached to a logical state.
+This confirms that we control the Logical Outcome by mechanically pushing the Token Distribution towards the Verbalized Prototype of the desired action.
