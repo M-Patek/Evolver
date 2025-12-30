@@ -1,63 +1,59 @@
 # THEORY PATCH: The Unified Objective Function
 
-Bridging the Gap between Signal and Loss via Free Energy
+From Gradient Descent to Metropolis-Hastings Proposals
 
 ## 1. The Schism
 
-The system currently receives two disparate signals:
+The system must reconcile two forces:
 
-* **The Prior (Generator):** $z_0 \in \mathbb{R}^V$. Goal: Stay close to the "natural" text distribution.
-* **The Likelihood (STP):** $E_{STP}(a) \in [0, \infty]$. Goal: Satisfy hard logical constraints.
+* The Generator Prior ($P_{gen}$): Wants to produce "natural" text (Low Perplexity).
+* The Logical Constraints ($E_{STP}$): Wants to satisfy algebraic truth (Zero Energy).
 
-Without a unified objective, the controller oscillates between "Valid but Gibberish" and "Fluent but Wrong".
+Since $E_{STP}$ is discrete and non-differentiable, we cannot use standard loss functions + backprop.
 
 ## 2. Formal Definition: Variational Free Energy
 
-We define the objective of the Bias Controller as minimizing the Variational Free Energy $\mathcal{F}$ of the modified distribution $Q_{\vec{b}}$.
+We frame the control problem as Sampling from a Posterior Distribution.
+We want to sample actions $a$ from the "Truth Distribution" $P^*$:
 
-Let $P_{prior} = \text{Softmax}(z_0)$ be the generator's original probability.
-Let $Q_{\vec{b}} = \text{Softmax}(z_0 + P\vec{b})$ be the biased distribution.
-Let $E(a)$ be the STP Energy of action $a$.
+$$
+P^*(a | \text{Context}) \propto P_{gen}(a | \text{Context}) \cdot e^{-\beta E_{STP}(a)}
+$$
 
-The Total Loss Function $\mathcal{L}(\vec{b})$ is defined as:
+Where $\beta$ is the inverse temperature (strictness of logic).
 
-$$\mathcal{L}(\vec{b}) = \underbrace{\mathbb{E}_{a \sim Q_{\vec{b}}} [E(a)]}_{\text{Expected Logical Error}} + T \cdot \underbrace{D_{KL}(Q_{\vec{b}} || P_{prior})}_{\text{Semantic Drift}}$$
+## 3. The Role of the Transformer: Learning the Proposal
 
-* **Term 1 (Accuracy):** Forces the distribution towards logically valid actions ($E=0$).
-* **Term 2 (Fidelity):** Penalizes deviating too far from the LLM's original intent (the "Bias Cost").
-* **$T$ (Temperature):** The Lagrange multiplier controlling the trade-off.
+Direct sampling from $P^*$ is intractable (requires exhaustive search).
+We introduce a parameterized Proposal Distribution $Q_\theta(\vec{b} | \text{Context})$ (The Intuition Engine).
 
-## 3. The Optimization Hierarchy (Lexicographical)
+The objective of the Transformer ($\theta$) is to minimize the Inclusive KL Divergence (or minimize the Forward Amortized Inference Cost):
 
-In practice, logical validity is often non-negotiable. Thus, we define the optimization as Lexicographical in the limit $T \to 0$.
+$$
+\mathcal{L}(\theta) = \mathbb{E}_{\text{Context}} \left[ D_{KL}(P^* || Q_\theta) \right]
+$$
 
-Find $\vec{b}^*$ such that:
+In practice, this means Self-Imitation Learning:
 
-1.  **Primary:** $\vec{b}^* \in \text{argmin}_{\vec{b}} \mathcal{E}_{STP}(\text{Dec}(\vec{b}))$
-2.  **Secondary:** Among all valid $\vec{b}$, minimize $||\vec{b}||_{p-adic}$ (or equivalently, minimize $D_{KL}$).
+* **Explore:** VAPO runs a computationally expensive search to find a valid $\vec{b}^*$ such that $E(\vec{b}^*) = 0$.
+* **Train:** The Transformer updates $\theta$ to maximize the likelihood of guessing $\vec{b}^*$ in the future.
 
-## 4. VAPO's Role: Metropolis-Hastings Implementation
+$$
+\nabla_\theta \mathcal{L} \approx - \nabla_\theta \log Q_\theta(\vec{b}^* | \text{Context})
+$$
 
-This formulation explains why VAPO works as a Metropolis-Hastings sampler.
+## 4. The VAPO Algorithm (Metropolis-Hastings)
 
-The acceptance probability for a perturbation $\vec{b} \to \vec{b}'$ is:
+With the trained proposal $Q_\theta$, the runtime loop becomes efficient:
 
-$$\alpha = \min \left( 1, \frac{e^{-\mathcal{L}(\vec{b}')/T}}{e^{-\mathcal{L}(\vec{b})/T}} \right) = \min \left( 1, e^{-\frac{\Delta E + T \cdot \Delta D_{KL}}{T}} \right)$$
+* **Propose:** Sample candidate bias $\vec{b}' \sim Q_\theta(\cdot | \text{Context})$.
+* **Evaluate:** Calculate Energy $E(\vec{b}')$.
+* **Accept/Reject:**
+    * If $E(\vec{b}') = 0$: Accept (Instant solution).
+    * If $E(\vec{b}') > 0$: Reject and perform local perturbation (random walk) starting from $\vec{b}'$.
 
-This confirms that VAPO is implicitly sampling from the Posterior Distribution of Truth:
+## 5. Summary
 
-$$P^*(a | \text{Logic}) \propto P_{prior}(a) \cdot e^{-E(a)/T}$$
-
-## 5. Code Implication
-
-The `BiasController` struct should track these two metrics separately to allow for dynamic temperature scheduling (Annealing).
-
-```rust
-struct ObjectiveMetrics {
-    logical_energy: f64,   // E_STP
-    semantic_drift: f64,   // KL(Q || P)
-    total_loss: f64,       // E + T * KL
-}
-```
-
-This ensures the controller knows what it is minimizing: it is minimizing the **Information Theoretic Cost** of correcting the model.
+* **Old View:** Transformer predicts gradients $\to$ Impossible on discrete steps.
+* **New View:** Transformer predicts Proposals for a Metropolis-Hastings sampler.
+* **Result:** The system "learns to search" faster over time, but correctness is always guaranteed by the verifier (STP), not the neural network.
