@@ -1,73 +1,91 @@
-# THEORY PATCH: Geometry of Non-Smooth Control
+# Geometry of Nonsmooth Space: Stratification & Generalized Curvature
 
-Defining Manifolds, Cones, and Retractions for Evolver
+## 1. The Stratified Manifold Hypothesis
 
-## 1. The Geometric Interface Gap
+The core premise of the Evolver system is that the space of logical thoughts is not a smooth manifold, but a Stratified Space (specifically, a Whitney Stratified Space).
 
-Previous patches defined the topology (Bundle) and dynamics (Markov), but lacked the metric geometry.
+$$\mathcal{M} = \bigcup_{i} S_i$$
 
-* **Problem:** $S_{t+1} = S_t + \delta$ is undefined because logical states cannot be added.
-* **Problem:** "Direction of improvement" is ambiguous at singular points (e.g., when a proof branch splits).
+Where:
 
-We formalize the system using **Riemannian Geometry on Stratified Spaces**.
+* Each $S_i$ (stratum) is a smooth submanifold representing a fixed logical structure (e.g., "All proofs that use Modus Ponens").
+* The transitions between strata (logical jumps) are singular points where dimensions may change, and gradients are discontinuous.
 
-## 2. The Ambient Manifold: Stratified Space
+### 1.1 The Impossibility of Direct Addition
 
-We embed the STP State Space into a continuous Stratified Manifold $\mathcal{M}$.
+In standard Deep Learning, we assume $\theta_{new} = \theta + \Delta \theta$.
+In a Stratified Space, if $x \in S_i$ and we add a perturbation $\delta$, $x + \delta$ might fall into "the void" (invalid logic) or strictly cross into another stratum $S_j$.
 
-$$\mathcal{M} = \bigcup_{k} \Sigma_k$$
+Therefore, simple vector addition is undefined.
 
-* **Strata ($\Sigma_k$):** Each stratum represents a "logical isomorphism class" (e.g., all proofs that have successfully defined $n$). Within a stratum, the metric is smooth (changing variable values).
-* **Singularities:** The boundaries between strata represent discrete logical steps (Define, Branch, QED). These are "folds" or "corners" in the manifold.
+## 2. Clarke Tangent Cone & Retraction
 
-## 3. The Tangent Structure: The Clarke Tangent Cone
+To rigorously define "movement" in this space without violating logical constraints, we use Nonsmooth Analysis.
 
-Since $\mathcal{M}$ is non-smooth, we cannot define a linear Tangent Space $T_S \mathcal{M}$.
-Instead, we define the **Tangent Cone** $C_S \mathcal{M}$ (specifically, the Clarke Tangent Cone for optimization).
+### 2.1 Clarke Tangent Cone
 
-$$C_S \mathcal{M} = \{ v \in \mathbb{R}^V \mid \exists t_n \downarrow 0, x_n \to S \text{ s.t. } S + t_n v \in \mathcal{M} \}$$
+At a singular point $x$ (e.g., a logical conflict), the tangent space is not a flat plane. We define the Clarke Tangent Cone, $T_C(x)$, which captures all "admissible" directions that allow stabilization.
 
-* **Interpretation:** The Bias Vector $\vec{b}$ is a vector in the Ambient Embedding Space.
-* **Validity:** $\vec{b}$ is effective only if its projection falls within the Tangent Cone $C_S \mathcal{M}$. If it hits the wall of the cone, the logic "jams."
+$$T_C(x) = \{ v \mid \forall x_n \to x, t_n \downarrow 0, \exists v_n \to v \text{ s.t. } x_n + t_n v_n \in \mathcal{M} \}$$
 
-## 4. The Operator: Retraction (Projection)
+**Engineering Meaning:** This cone defines the set of all valid bias perturbations $\vec{b}$ that can locally resolve a conflict without breaking the STP constraints.
 
-The fundamental operation of Evolver is not addition, but **Retraction**.
-We define the Retraction map $R: T \mathcal{M} \to \mathcal{M}$ that maps a tangent vector back onto the manifold.
+### 2.2 Retraction Mapping
 
-$$S_{new} = R_S(P \cdot \vec{b})$$
+Since we operate in the embedding space (Logits $\mathbb{R}^n$), we need a way to project our linear perturbations back onto the stratified manifold. We define a Retraction $\mathcal{R}$:
 
-In our context, the ActionDecoder + STP Transition is the Retraction map.
+$$\mathcal{R}_x: T_x \mathcal{M} \to \mathcal{M}$$
 
-* **First Order:** It moves along the geodesic defined by $\vec{b}$.
-* **Correction:** It projects the result back to the nearest valid stratum (Energy minimization).
+In Evolver, this is implemented by the STP Decoder.
 
-## 5. Curvature and Stability (Second Order)
+$$\text{Decode}(L + W \cdot \vec{b}) \approx \mathcal{R}(x + \vec{b})$$
 
-We define the **Logical Curvature** $\kappa(S)$ via the Hessian of the Energy function $\nabla^2 E$.
+## 3. Generalized Curvature (The "Hessian" Correction)
 
-* **Flat Space ($\kappa \approx 0$):** Within a stratum (e.g., changing numerical constants). Small bias changes lead to proportional state changes.
-* **High Curvature ($\kappa \gg 0$):** Near phase transitions (e.g., just before closing a proof branch). Small bias changes can cause the state to snap to a completely different topology.
+**Correction Note:** In previous heuristic descriptions, we referred to the "Hessian" of the energy function. However, since $E(x)$ is Lipschitz continuous but not $C^2$ (due to logical discrete jumps), the standard Hessian does not exist at singular points. We hereby introduce the rigorous formulation.
 
-**VAPO's Geometric Interpretation:**
-VAPO acts as a Riemannian Trust Region method.
-1. It approximates the Retraction $R_S$ locally.
-2. It implicitly estimates the curvature $\kappa$ (via the success/failure of perturbations) to adjust the step size (Valuation Level).
+### 3.1 The Generalized Hessian (Clarke)
 
-## 6. Strict Mathematical Interfaces
+For the locally Lipschitz energy function $E: \mathbb{R}^n \to \mathbb{R}$, we define the Generalized Hessian, denoted as $\partial^2 E(x)$, as the convex hull of the limits of standard Hessians evaluated at nearby differentiable points.
 
-The system interfaces must reflect these geometric objects.
+Let $\Omega_E$ be the set of points where $E$ is twice differentiable (by Rademacher's theorem, this is almost everywhere). Then:
 
-```rust
-trait ManifoldOps {
-    /// Returns the set of feasible directions at the current singularity
-    /// (Generators of the Tangent Cone)
-    fn tangent_cone_generators(&self, state: &STPState) -> Vec<Direction>;
+$$\partial^2 E(x) = \text{co} \left\lbrace \lim_{i \to \infty} \nabla^2 E(x_i) \mid x_i \to x, x_i \in \Omega_E \right\rbrace$$
 
-    /// The Retraction Map: Projects a vector in ambient space onto the manifold
-    /// Returns the new state and the effective distance moved
-    fn retract(&self, state: &STPState, vector: BiasVector) -> (STPState, f64);
-}
-```
+This set $\partial^2 E(x)$ contains a family of matrices, not a single matrix.
 
-This completes the geometric picture: Evolver is controlling a particle on a rugged, stratified landscape by applying forces in the ambient space and relying on retraction to keep it on the surface.
+### 3.2 Sigma-Curvature ($\Sigma$-Curvature)
+
+We define the "Curvature" of a logical state not as a single number, but as the maximal spectral radius within the Generalized Hessian. We call this the $\Sigma$-Curvature:
+
+$$\kappa_{\Sigma}(x) = \sup_{H \in \partial^2 E(x)} \| H \|_{op}$$
+
+### 3.3 Physical Interpretation in VAPO
+
+This rigorous definition aligns perfectly with the behavior of the Bias Controller:
+
+* **Inside a Stratum (Smooth Logic):**
+    * $x$ is in a smooth region $S_i$. $\partial^2 E(x)$ collapses to the singleton $\{ \nabla^2 E(x) \}$.
+    * $\kappa_{\Sigma}$ is small.
+    * **VAPO Behavior:** Standard gradient descent works. The bias vector $\vec{b}$ evolves smoothly.
+
+* **At a Boundary (Logical Conflict/Jump):**
+    * $x$ is at a singularity (crossing from "Even" to "Odd"). The sequence of Hessians from different sides approaches different limits.
+    * $\partial^2 E(x)$ is a large set containing "infinite" or very steep distinct matrices.
+    * $\kappa_{\Sigma}$ spikes to infinity.
+    * **VAPO Behavior:** The "Energy Gradient" becomes unstable (subdifferential is large). The controller detects this Second-Order Variation and switches from "Optimization" to "Search/Jump" mode.
+
+## 4. Conclusion: The Optimization Objective
+
+The problem solved by the Evolver Sidecar is strictly defined as:
+
+$$\min_{\vec{b} \in \mathbb{R}^k} E(\mathcal{R}(\text{Logits} + P(\vec{b})))$$
+
+Where:
+
+* $E$ is the STP Energy (Lipschitz, Non-smooth).
+* $\mathcal{R}$ is the Retraction (Decoder).
+
+The optimization trajectory follows the path of minimal generalized curvature to ensure stability.
+
+By treating the system as a Nonsmooth Dynamic System, we justify why the Bias Controller requires perturbation (exploring the Clarke Cone) rather than just differentiation (which fails at singularities).
