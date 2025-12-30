@@ -1,122 +1,128 @@
 # Evolver: Neuro-Symbolic Alignment Orchestrator
-**(Bias-Controlled HTP Architecture)**
 
-> "Logic is not generated; it is orchestrated."
+(Bias-Controlled HTP Architecture)
 
-Evolver is a neuro-symbolic alignment system based on the **Hyper-Tensor Protocol (HTP)** and **Semi-Tensor Product (STP)**. Instead of attempting to train a "perfect" generator, it implements a **Sidecar Controller** that corrects the generator's output in real-time via algebraic constraints, ensuring rigorous logical derivation (**Zero Hallucination**).
+> "Logic is not generated; it is orchestrated. Search is not blind; it is guided."
 
----
+Evolver is a neuro-symbolic alignment system based on the Hyper-Tensor Protocol (HTP) and Semi-Tensor Product (STP). It solves the "Logical Hallucination" problem not by training a perfect generator, but by wrapping a chaotic LLM in a rigorous algebraic control loop.
 
-## 🏛️ Core Architecture
-The current Evolver system consists of three core components, forming a closed loop from "probabilistic guessing" to "algebraic truth":
+## 🏛️ Core Architecture: The Four Pillars
+
+The system is a closed loop involving four distinct components, transitioning from "probabilistic guessing" to "algebraic truth":
 
 ### 1. The Generator (Chaotic Core)
-* **Role:** Provides raw cognitive "primitives" (Logits).
-* **Traits:** Retains chaotic weights based on the Hidden Order Assumption, ensuring model irreversibility and Security.
-* **Status:** Permitted to produce Hallucinations; does not require perfect training.
+
+* **Role:** The "Dreamer". Provides raw cognitive primitives (Logits).
+* **Traits:** Retains chaotic weights based on the Hidden Order Assumption.
+* **Status:** Permitted to hallucinate.
 
 ### 2. The STP Engine (Constraint Checker)
+
 * **Code:** `src/dsl/stp_bridge.rs`
-* **Role:** The "Physics Engine" of the logical world.
-* **Principle:** Based on the Algebraic State-Space Theory of Semi-Tensor Product (STP). It maps all logical actions (Define, Apply, Assert) into matrix operations: $x(t+1) = L \ltimes x(t)$.
-* **Function:** Calculates the Energy ($E$) of the current generative action.
-    * $E = 0.0$: Logical self-consistency achieved (QED).
-    * $E > 0.0$: Logical violation detected (e.g., "Odd + Odd = Odd").
+* **Role:** The "Physics Engine".
+* **Principle:** Maps logical actions to matrix operations.
 
-### 3. The Bias Controller (Alignment Sidecar)
+$$
+x(t+1) = L \ltimes x(t)
+$$
+
+* **Output:** Discrete Energy ($E$).
+
+$$
+E = 0.0
+$$
+
+: Logical Consistency (QED).
+
+$$
+E > 0.0
+$$
+
+: Violation (e.g., "Odd + Odd = Odd").
+
+### 3. The Intuition Engine (Transformer Sidecar)
+
+* **Role:** The "Navigator".
+* **Type:** A lightweight Transformer trained on successful VAPO traces.
+* **Function:** Proposal Generation.
+* It does NOT provide gradients (the landscape is discrete).
+* It provides a Proposal Distribution.
+
+$$
+Q(\vec{b} | \text{Context})
+$$
+
+"Based on history, the solution is likely in this direction."
+
+### 4. The Bias Controller (VAPO Optimizer)
+
 * **Code:** `src/control/bias_channel.rs`
-* **Role:** The "Driver" of the system.
-* **Principle:** Based on Theorem 5.7 (Controllability Theorem). While core Logits remain chaotic, the output coordinates can be precisely controlled by superimposing a linear Bias Vector ($\vec{b}$).
+* **Role:** The "Driver".
 * **Algorithm:** VAPO (Valuation-Adaptive Perturbation Optimization).
-    * Performs gradient-free search within the discrete STP constraint space.
-    * Dynamically adjusts perturbation magnitude (Low-valuation vs. High-valuation bits) to minimize STP energy.
-
----
+* **Mechanism:** Metropolis-Hastings Search.
+* Takes the Proposal from the Intuition Engine.
+* Performs local discrete search/perturbation to latch onto the exact $E=0$ state.
+* Projects the final Bias Vector ($\vec{b}$) onto the Generator's logits.
 
 ## 🛠️ Implementation & Tech Stack
-Built on **Rust**, emphasizing type safety and zero-cost abstractions.
 
-### DSL: Proof Action Definition (`src/dsl/schema.rs`)
-The system interacts with the algebraic world via a strictly defined DSL to eliminate natural language ambiguity.
+Built on Rust for type safety and zero-cost abstractions.
 
-```rust
-pub enum ProofAction {
-    Define { symbol: String, hierarchy_path: Vec<String> }, // Entity definition (v-PuNNs)
-    Assert { subject: String, relation: String, object: String }, // Logical assertion
-    Apply { theorem_id: String, inputs: Vec<String>, output_symbol: String }, // Theorem application
-    Branch { case_id: String, sub_proof: Vec<ProofAction> }, // Branch exploration
-    QED,
-}
-```
+### The Control Loop (Revised)
 
-### VAPO Optimization Loop (`src/control/bias_channel.rs`)
-The heart of the system. When the Generator produces an erroneous intent, VAPO intervenes:
-1.  **Detect:** STP Engine calculates high energy ($E > 0$).
-2.  **Perturb:** VAPO generates a bias perturbation based on energy magnitude: $\vec{b}_{new} = \vec{b}_{old} + \Delta$.
-3.  **Project:** Projects the Bias into Logit space: $L_{final} = L_{raw} + W_{proj} \cdot \vec{b}$.
-4.  **Decode:** Decodes the new action $A'$.
-5.  **Verify:** Recalculates energy. Loops until $E \approx 0$.
+* **Generate:** LLM outputs raw logits $z$.
+* **Verify:** STP Engine calculates Energy $E(z)$. If $E=0$, emit.
+* **Propose:** If $E>0$, Intuition Engine predicts a target region $\vec{b}_{init}$.
+* **Search:** VAPO performs fine-grained discrete search around $\vec{b}_{init}$ to find $\vec{b}^*$.
+* **Project:**
 
----
+$$
+z_{final} = z + W \cdot \vec{b}^*
+$$
+
+* **Learn:** The trajectory is saved to train the Intuition Engine.
+
+$$
+(\text{Context}, \vec{b}^*)
+$$
 
 ## 🚀 Quick Start
+
 ### Dependencies
+
 * Rust (1.70+)
 * `serde`, `rand`, `num-integer`
 
 ### Run Demo
-The main program (`src/main.rs`) simulates a classic mathematical proof: "Prove that the sum of two odd numbers is even."
+
+The main program (`src/main.rs`) simulates the "Proposer-Optimizer" dynamic:
 
 ```bash
 cargo run
 ```
 
 ### Expected Output
-The system demonstrates the Generator "erring" and the Bias Controller "correcting" it:
 
 ```text
 🐱 New Evolver System Initializing...
 --------------------------------------------------
-[Init] STP Context loaded with theorems: ModAdd, Equals...
-[Init] VAPO Controller ready (Bias Dim: 16)
+[Init] STP Context loaded.
+[Init] Intuition Engine (Mock) loaded.
 
 📝 Mission: Prove that the sum of two Odd numbers is Even.
-[Step 1] Generator defined 'n' as Odd. Energy: 0.0 (OK)
-[Step 2] Generator defined 'm' as Odd. Energy: 0.0 (OK)
-
+...
 ⚠️  [Step 3] Generating inference step...
    -> Raw Generator intent: Define 'sum' as Odd.
-   -> STP Check: VIOLATION detected! (Odd + Odd != Odd)
+   -> STP Check: VIOLATION (Energy > 0).
 
-🛡️  [VAPO] Bias Controller Engaging...
-   -> Optimization loop... (Temperature: 2.0)
-   -> Found correction vector.
+🧠 [Intuition] Transformer proposing bias region: Sector 4.
+🛡️ [VAPO] Optimizing local perturbation...
+   -> Found correction vector [-1, 0, 1...]
+   -> Energy dropped to 0.0.
 
-✅ [Result] Optimization Complete.
-   -> Final Action: Define { symbol: "sum_truth", hierarchy_path: ["Number", "Integer", "Even"] }
-   -> Applied Bias Vector: [0, 1, -1, 0, ...]
-   -> Logic is now ALIGNED.
+✅ [Result] Action Corrected: Define 'sum' as Even.
 ```
 
----
-
-## ⚖️ Theoretical Foundation
-### Security vs. Trainability
-We resolve a core paradox:
-* Security relies on the chaotic nature of algebraic structures (Non-commutative Evolution).
-* Trainability relies on the smoothness of mapping (Lipschitz Continuity).
-
-**Solution: "The Engineering Cheat"** We preserve the chaotic core of $Cl(\Delta)$ but introduce a Linear Bias Channel at the output layer. See `Security vs. Trainability.md` for a detailed breakdown.
-
-### HTP Protocol
-Based on `THEORY.md`, all state transitions follow a dual-operator architecture:
-* **Time Operator ($\oplus$):** Non-commutative (History Sensitive).
-* **Space Operator ($\otimes$):** Commutative (Holographic Aggregation).
-
----
-
 ## 📜 License
-**M-Patek PROPRIETARY LICENSE** Copyright © 2025 M-Patek. All Rights Reserved.  
-(See LICENSE file for details - Evaluation Only)
 
-*"Rebuilding Intelligence, One Bias Vector at a Time."* 🐾
+M-Patek PROPRIETARY LICENSE Copyright © 2025 M-Patek.
