@@ -1,9 +1,9 @@
 use rand::prelude::*;
 use rand_distr::{Distribution, Normal};
-use rand::rngs::StdRng; // Use Standard RNG for seeding
-// use std::f64::consts::PI; 
+use rand::rngs::StdRng;
 use crate::dsl::schema::{ProofAction, ProofBundle};
-use crate::dsl::stp_bridge::STPContext;
+// [Fix] 移除了不存在的 EnergyProfile 引用
+use crate::dsl::stp_bridge::STPContext; 
 
 /// -------------------------------------------------------------------
 /// BIAS CHANNEL v0.2 (Deterministic Edition)
@@ -93,8 +93,6 @@ pub struct VapoConfig {
 /// The main controller that runs VAPO.
 pub struct BiasController {
     config: VapoConfig,
-    // We no longer store persistent state that carries over between Contexts
-    // to ensure pure determinism.
 }
 
 impl BiasController {
@@ -120,7 +118,7 @@ impl BiasController {
     where
         F: Fn(&[f64]) -> ProofAction,
     {
-        println!("🛡️ [VAPO] Init: Seed={}, ContextHash={}", seed, md5::compute(context_str));
+        println!("🛡️ [VAPO] Init: Seed={}, ContextHash={:x}", seed, md5::compute(context_str));
 
         // 1. Deterministic Initialization
         let mut rng = StdRng::seed_from_u64(seed);
@@ -130,7 +128,12 @@ impl BiasController {
         let mut temperature = self.config.initial_temperature;
         let mut best_energy = f64::MAX;
         let mut best_bias = current_bias.clone();
-        let mut best_action = decode_fn(raw_logits); // Initial guess
+        
+        // Initial guess evaluation
+        let initial_action = decode_fn(raw_logits);
+        // Note: In a real scenario, we calculate energy of the initial guess here too, 
+        // but often the raw_logits alone are high energy.
+        let mut best_action = initial_action;
 
         // 2. Optimization Loop
         for step in 0..self.config.max_iterations {
@@ -148,9 +151,12 @@ impl BiasController {
 
             // Decode & Check Energy
             let candidate_action = decode_fn(&mixed_logits);
+            
+            // Critical: Check energy using the STP Context
+            // This implicitly assumes the action is valid in current state context
             let energy = stp_ctx.calculate_energy(&candidate_action);
 
-            // Selection Logic
+            // Selection Logic (Greedy + Temperature for simplicity in this demo)
             if energy < best_energy {
                 best_energy = energy;
                 current_bias = candidate_bias.clone();
@@ -161,9 +167,7 @@ impl BiasController {
                     println!("✨ [VAPO] Convergence at Step {}. Energy=0.0", step);
                     break;
                 }
-            } else {
-                // Stochastic Accept (Metropolis-like) could go here
-            }
+            } 
 
             // Blind Spot Rotation Logic (Simulated)
             // If stuck, we can rotate the projector. 
@@ -171,7 +175,6 @@ impl BiasController {
             if step % 15 == 14 && best_energy > 0.1 {
                 println!("🔄 [VAPO] Rotating Basis (Deterministic)...");
                 // Re-init projector with current RNG state (which flows from seed)
-                // In this mock, we just scramble weights deterministically
                 let new_sub_seed = rng.next_u64(); 
                 projector = ProjectionMatrix::new_from_seed(new_sub_seed);
                 current_bias = BiasVector::new_zero(); // Reset bias
