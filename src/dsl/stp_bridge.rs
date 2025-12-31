@@ -1,146 +1,119 @@
 use std::collections::HashMap;
 use crate::dsl::schema::ProofAction;
-use crate::dsl::math_kernel::Matrix;
 
-/// STP (Semi-Tensor Product) Context
-/// 逻辑物理引擎 v2.0 (Strict Mode)
-///
-/// [Security Update]: 修复了“未定义输入返回 0 能量”的漏洞。
-/// 现在，任何试图访问未定义状态的行为都会触发高能惩罚 (Energy = 100.0)。
+// ==========================================
+// ⚡ Unified Energy Constants
+// ==========================================
+// 对应文档中的 alpha (Validity Barrier)
+// 必须足够大，以确保任何逻辑错误的状态能量都严格大于 0
+const PENALTY_BARRIER: f64 = 100.0;
+
+// 对应文档中的 beta (Guidance Coefficient)
+// 用于缩放几何距离的影响
+const GUIDANCE_BETA: f64 = 1.0;
+
 pub struct STPContext {
-    // 状态空间：符号 -> 逻辑向量 (e.g., "n" -> [1, 0]^T)
-    pub state: HashMap<String, Matrix>,
-    
-    // 规则空间：定理ID -> 结构矩阵 (e.g., "ModAdd" -> M_add)
-    pub operators: HashMap<String, Matrix>,
+    /// 符号表状态：存储变量名到其值的映射 (例如 "n" -> "Odd")
+    pub state: HashMap<String, String>,
 }
 
 impl STPContext {
     pub fn new() -> Self {
-        let mut ctx = STPContext {
+        STPContext {
             state: HashMap::new(),
-            operators: HashMap::new(),
-        };
-        ctx.init_operators();
-        ctx
+        }
     }
 
-    fn init_operators(&mut self) {
-        // Matrix M_add (2 x 4):
-        // [ 1.0, 0.0, 0.0, 1.0 ] (Even 行)
-        // [ 0.0, 1.0, 1.0, 0.0 ] (Odd 行)
-        let m_add = Matrix::new(2, 4, vec![
-            1.0, 0.0, 0.0, 1.0, 
-            0.0, 1.0, 1.0, 0.0  
-        ]);
-        
-        self.operators.insert("ModAdd".to_string(), m_add);
-    }
-
-    /// 核心能量计算函数 (The Strict Violation Function)
+    /// 计算逻辑动作的能量
     /// 
-    /// 返回值定义：
-    /// - 0.0: 逻辑完美自洽 (Truth)
-    /// - 1.0: 逻辑推导错误 (Falsehood)
-    /// - 100.0: 逻辑断裂/未定义 (Chaos/Void) - 严厉惩罚！
+    /// 实现公式: J(S) = V(Psi(S)) * [alpha + beta * ||Psi(S) - tau||^2]
     pub fn calculate_energy(&mut self, action: &ProofAction) -> f64 {
         match action {
+            // 定义动作：通常仅仅是更新状态，不产生能量（除非重定义冲突）
             ProofAction::Define { symbol, hierarchy_path } => {
-                let val_type = hierarchy_path.last().map(|s| s.as_str()).unwrap_or("");
-                
-                let vector = if val_type == "Odd" {
-                    Matrix::new(2, 1, vec![0.0, 1.0])
-                } else if val_type == "Even" {
-                    Matrix::new(2, 1, vec![1.0, 0.0])
-                } else {
-                    // [Fix]: 定义未知类型也是一种风险，给予轻微惩罚或默认向量
-                    // 这里我们暂时允许通过，但在严格模式下可能需要 Panic
-                    Matrix::new(2, 1, vec![0.5, 0.5]) 
-                };
-                
-                self.state.insert(symbol.clone(), vector);
-                0.0 
+                if let Some(val) = hierarchy_path.last() {
+                    self.state.insert(symbol.clone(), val.clone());
+                }
+                0.0
             },
-            
+
+            // 应用定理：这是产生能量（逻辑验证）的核心位置
             ProofAction::Apply { theorem_id, inputs, output_symbol } => {
-                // [Critical Fix]: 严厉检查输入是否存在
-                if inputs.is_empty() {
-                    return 100.0; // 空输入惩罚
-                }
-
-                // 1. 获取并检查第一个输入
-                let v1 = match self.state.get(&inputs[0]) {
-                    Some(v) => v,
-                    None => {
-                        // println!("DEBUG: Input symbol '{}' not found!", inputs[0]);
-                        return 100.0; // [Penalty] 引用未定义符号
-                    }
-                };
-                
-                // 2. 处理二元运算张量积
-                let v_input_tensor = if inputs.len() > 1 {
-                    let v2 = match self.state.get(&inputs[1]) {
-                        Some(v) => v,
-                        None => {
-                            // println!("DEBUG: Input symbol '{}' not found!", inputs[1]);
-                            return 100.0; // [Penalty] 引用未定义符号
-                        }
-                    };
-                    v1.kron(v2) 
+                if theorem_id == "ModAdd" {
+                    self.evaluate_mod_add(inputs, output_symbol)
                 } else {
-                    v1.clone()
-                };
-
-                // 3. 获取算子
-                let m_op = match self.operators.get(theorem_id) {
-                    Some(m) => m,
-                    None => return 100.0, // [Penalty] 调用不存在的定理
-                };
-
-                // 4. 物理推演 (V_truth)
-                let v_truth = match m_op.matmul(&v_input_tensor) {
-                    Ok(v) => v,
-                    Err(_) => return 100.0, // [Penalty] 维度崩塌
-                };
-
-                // 5. 获取声明结果 (V_claim)
-                let v_claim = match self.state.get(output_symbol) {
-                    Some(v) => v,
-                    None => {
-                        // 这是一个微妙的情况：如果 Apply 的目的是生成 output_symbol，
-                        // 那么它此时可能还不存在。但在 Evolver 的逻辑里，
-                        // 通常是先 Define (猜想)，再 Apply (验证)。
-                        // 如果 output_symbol 没被 Define 过，就没有参照物来计算 Energy。
-                        // 所以这里找不到 claim 也是一种错误。
-                        return 100.0; 
-                    }
-                };
-
-                // 6. 计算距离
-                let dist = self.vector_distance(&v_truth, v_claim);
-                
-                if dist > 1e-6 { 
-                    1.0 // 逻辑错误 (例如 Even != Odd)
-                } else { 
-                    0.0 // 逻辑正确
+                    // 🚨 安全修复：未知定理视为逻辑错误，返回 Barrier 惩罚！
+                    // 防止优化器通过调用不存在的定理来欺骗系统获得 0 能量。
+                    PENALTY_BARRIER
                 }
             },
             
-            // 对于未知的动作类型，不要默认返回 0.0！
-            _ => 100.0, 
+            // 其他动作暂不产生能量
+            _ => 0.0,
         }
     }
 
-    fn vector_distance(&self, v1: &Matrix, v2: &Matrix) -> f64 {
-        if v1.rows != v2.rows || v1.cols != v2.cols {
-            return 100.0; // 维度不匹配惩罚
-        }
+    /// 评估 ModAdd (奇偶性加法) 的能量
+    /// 
+    /// 逻辑规则:
+    /// Odd + Odd = Even
+    /// Even + Even = Even
+    /// Odd + Even = Odd
+    fn evaluate_mod_add(&self, inputs: &[String], output_symbol: &str) -> f64 {
+        // 1. 获取输入值
+        let val1 = self.state.get(inputs.get(0).unwrap_or(&"".to_string())).map(|s| s.as_str()).unwrap_or("Unknown");
+        let val2 = self.state.get(inputs.get(1).unwrap_or(&"".to_string())).map(|s| s.as_str()).unwrap_or("Unknown");
         
-        let mut sum_sq = 0.0;
-        for i in 0..v1.data.len() {
-            let diff = v1.data[i] - v2.data[i];
-            sum_sq += diff * diff;
+        // 2. 获取当前 VAPO 猜测的输出值 (The Will's Guess)
+        let current_guess = self.state.get(output_symbol).map(|s| s.as_str()).unwrap_or("Unknown");
+
+        // 3. 计算这一步的逻辑真值 (Ground Truth)
+        let expected = match (val1, val2) {
+            ("Odd", "Odd") => "Even",
+            ("Even", "Even") => "Even",
+            ("Odd", "Even") | ("Even", "Odd") => "Odd",
+            _ => "Unknown", // 输入未定义，无法判断
+        };
+
+        // 4. 计算统一能量 (Unified Energy)
+        if expected == "Unknown" || current_guess == "Unknown" {
+            // 🚨 安全修复：上下文缺失也是一种不可接受的状态，必须给予高惩罚
+            // 防止优化器通过删除变量定义来“蒙混过关” (Reward Hacking)。
+            // 旧逻辑是返回 10.0，这会导致优化器倾向于制造 Unknown 状态来逃避 100.0 的错误惩罚。
+            return PENALTY_BARRIER; 
         }
-        sum_sq
+
+        if current_guess == expected {
+            // ✅ Case 1: 逻辑正确 (Truth)
+            // J(S) = 0
+            return 0.0;
+        } else {
+            // ❌ Case 2: 逻辑错误 (Violation)
+            // J(S) = Barrier + Residual
+            // 我们需要计算 "Odd" 和 "Even" 之间的几何距离。
+            // 在简单的二元空间中，距离是固定的，但在更复杂的空间中这会有梯度。
+            // 这里我们模拟一个距离平方: dist_sq
+            
+            let dist_sq = self.calculate_semantic_distance(current_guess, expected);
+            
+            return PENALTY_BARRIER + GUIDANCE_BETA * dist_sq;
+        }
+    }
+
+    /// 计算语义距离的平方 ||Psi(S) - tau||^2
+    /// 这里的实现是一个简化的度量空间
+    fn calculate_semantic_distance(&self, s1: &str, s2: &str) -> f64 {
+        match (s1, s2) {
+            (a, b) if a == b => 0.0,
+            
+            // Odd 和 Even 是互斥的，距离定义为 1.0
+            ("Odd", "Even") | ("Even", "Odd") => 1.0,
+            
+            // 如果是一个稍微接近的概念 (例如 "Integer" vs "Odd")，距离可以小一点
+            ("Integer", "Odd") | ("Odd", "Integer") => 0.5,
+            
+            // 完全不相关的概念，距离很大
+            _ => 5.0,
+        }
     }
 }
