@@ -1,4 +1,4 @@
-## Energy Definition: The Discrete Logic Potential
+# Energy Definition: The Discrete Logic Potential
 
 ### 1. Nature of Energy
 In Evolver, energy $E$ is no longer a continuously differentiable Lyapunov function, but a **Discrete Logic Potential**. It is a binary or integer measure of the "degree of logical violation," directly reflecting the state of the STP (Semi-Tensor Product) engine, Master Meow (主人喵).
