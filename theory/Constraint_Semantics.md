@@ -1,67 +1,50 @@
-# THEORY PATCH: Semantics of the Constraint Set
+# Constraint Semantics: The Rules of Algebra
 
-Disambiguating $\mathcal{C}$ in the Neuro-Symbolic Bundle
+## 1. The Nature of Constraints
+In this architecture, a "Constraint" is no longer an additional rule imposed on an external generator, but rather an intrinsic property of the algebraic structure itself.
+Constraints define validity. Only state sequences that satisfy specific algebraic and logical rules can be recognized as "Truth."
 
-## 1. The Semantic Ambiguity
+## 2. Formal Definition
 
-The term "Constraint" currently conflates three distinct mathematical structures:
+### 2.1 Algebraic Constraints
+These constraints are enforced by the mathematical core (`src/soul/algebra.rs`).
 
-* **Feasibility:** Is action $a$ valid at state $s$? ($C \subseteq S \times A$)
-* **Admissibility:** Is the sequence $a_1 \dots a_n$ valid? ($C \subseteq A^*$)
-* **Invariance:** Does the transition preserve truth? ($T(s, a) \in S_{true}$)
+**Discriminant Invariance:**
+For any state 
+$S_t = (a_t, b_t, c_t)$ 
+on the evolution trajectory, the following must hold:
+$$b_t^2 - 4a_t c_t = \Delta$$
 
-To resolve this, we define the Constraint Set $\mathcal{C}$ as an Algebraic Variety on the Bundle.
+**Group Closure:**
+The result of any operation 
+$S_{new} = S_{old} \circ \epsilon$ 
+must remain within the Ideal Class Group 
+$Cl(\Delta)$. 
+This guarantees that the system never produces "mathematically nonsensical" states.
 
-## 2. Formal Definition: The Local Variety
+### 2.2 Logical Constraints
+These constraints are verified by the STP engine (`src/dsl/stp_bridge.rs`).
 
-Let $\mathcal{B} = S \times A$ be the total space of the State-Action bundle.
-We define the Local Constraint Variety $\mathcal{V}_{loc}$ as the kernel of the Energy functional:
+**Type Consistency:**
+The action `Define { symbol: "n", type: "Odd" }` must comply with the rules of the type system.
 
-$$\mathcal{V}_{loc} = \{ (s, a) \in S \times A \mid E(s, a) = 0 \}$$
+**Causal Consistency:**
+The action `Apply { inputs: ["n"] }` requires that the symbol "n" must have been defined in a previous step.
+$$a_t \text{ is valid} \iff \text{Preconditions}(a_t) \subseteq \bigcup_{i=0}^{t-1} \text{Effects}(a_i)$$
 
-This defines a Fibered Submanifold of valid transitions.
+**Axiomatic Consistency:**
+The assertion `Assert { condition }` must evaluate to true under the current STP state.
+$$E_{STP}(S_t, a_t) = 0 \iff \text{STP}(S_t) \vdash a_t$$
 
-**Interpretation:** The set $\mathcal{C}$ is NOT a static subset of $A$. It is the projection of $\mathcal{V}_{loc}$ onto the fiber $A|_s$.
+## 3. Constraint Manifold
+We define the set of all states that satisfy the constraints as the **Manifold of Truth** $\mathcal{M}_{truth}$.
+$$\mathcal{M}_{truth} = \{ \tau \in (Cl(\Delta))^* \mid \forall t, E_{STP}(\Psi(S_t)) = 0 \}$$
 
-**Code Mapping:**
-* `ProofAction::Define` checks if $a$ fits the static topology of $S$.
-* `ProofAction::Assert` checks if $(s, a)$ lies on the truth surface.
+The task of the optimizer (VAPO) is to restrict the system's trajectory to this manifold.
 
-## 3. The Global Constraint: Trace Language
+* **Hard Constraints:** Must be satisfied absolutely (e.g., the Discriminant). If violated, the code will Panic or return an error.
+* **Soft Constraints:** Can be temporarily violated during the search process (e.g., STP energy), but the final solution must satisfy them.
 
-The dynamics induce a Language $\mathcal{L} \subseteq A^*$ defined by the valid traces on $\mathcal{V}_{loc}$.
-
-A sequence $\tau = (a_1, \dots, a_T)$ is in $\mathcal{C}_{global}$ iff there exists a state sequence $s_0, \dots, s_T$ such that:
-
-$$\forall t, (s_t, a_{t+1}) \in \mathcal{V}_{loc} \quad \text{and} \quad s_{t+1} = \Phi(s_t, a_{t+1})$$
-
-This formalizes the constraint as a Subshift of Finite Type (or Context-Sensitive Language, depending on STP complexity).
-
-## 4. STP Specifics: Commutative Diagram Constraints
-
-In STP, "Applying a Theorem" is a specific type of constraint: Commutative Invariance.
-
-Let $D_s$ be the derivation diagram at state $s$.
-Let $f_{thm}: S \to S$ be the transformation implied by the theorem.
-The constraint is that the computational path must commute with the logical path:
-
-$$Constraint_{apply}(s, a) \iff || s_{next}^{computed} - s_{next}^{logic} || = 0$$
-
-Where $s_{next}^{logic} = M_{thm} \ltimes s$.
-
-## 5. Type System Implication
-
-To strictly enforce this, the Rust `STPContext` should expose the constraint check as a Membership Test on the Variety.
-
-```rust
-trait ConstraintManifold {
-    /// Checks if the point (s, a) lies on the Zero-Energy Variety
-    fn contains(&self, state: &STPState, action: &ProofAction) -> bool;
-
-    /// Returns the Tangent Space of valid modifications at (s, a)
-    /// Used by VAPO to project gradients.
-    fn tangent_space(&self, state: &STPState, action: &ProofAction) -> Vec<BiasVector>;
-}
-```
-
-This clarifies that VAPO is performing Manifold Optimization: moving the point $(s, \hat{a})$ onto the surface $\mathcal{V}_{loc}$.
+## 4. Code Mapping
+* `ClassGroupElement::compose`: Guarantees algebraic constraints.
+* `STPContext::calculate_energy`: Checks logical constraints. If violated, it returns non-zero energy, guiding VAPO to avoid that path.
