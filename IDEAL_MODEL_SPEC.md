@@ -17,8 +17,10 @@ The system transitions from a "continuous manifold approximation" to a rigorous 
 
 The core state space is not a continuous manifold, but a finite discrete Abelian group: the Ideal Class Group $Cl(\Delta)$.
 
-**Discriminant:** $$\Delta < 0$$ 
-and 
+**Discriminant:** $$\Delta < 0$$
+
+and
+
 $$\Delta \equiv 0, 1 \pmod 4$$
 
 **Elements:** Equivalence classes of binary quadratic forms $[a, b, c]$.
@@ -43,9 +45,8 @@ Evolution is a Random Walk or Directed Search on $\mathcal{G}$.
 
 $$S_{t+1} = S_t^2 \circ \epsilon_t$$
 
-**Spin ($S^2$):** A deterministic jump in the graph, providing mixing.
-
-**Perturbation ($\epsilon_t \in \mathcal{P}$):** A single step along an edge of the Cayley Graph, chosen by the Will.
+* **Spin ($S^2$):** A deterministic jump in the graph, providing mixing (Time evolution).
+* **Perturbation ($\epsilon_t \in \mathcal{P}$):** A single step along an edge of the Cayley Graph, chosen by the Will (Optimization step).
 
 ---
 
@@ -56,6 +57,7 @@ $$S_{t+1} = S_t^2 \circ \epsilon_t$$
 The responsibility of the Will is to navigate the Cayley Graph to find a node $S^*$ such that the projected logical path satisfies zero energy.
 
 $$\text{Minimize } E_{STP}(\Psi(S))$$
+
 $$\text{subject to } S \in V(\mathcal{G})$$
 
 ### 2.2 VAPO on Graphs
@@ -63,15 +65,15 @@ $$\text{subject to } S \in V(\mathcal{G})$$
 Since gradients $\nabla J$ are undefined on a discrete graph, VAPO (Valuation-Adaptive Perturbation Optimization) operates as a Heuristic Search.
 
 **The "Valuation" Heuristic:**
-While the group is discrete, the Projection Map $\Psi$ introduces a pseudo-metric.
+The efficacy of VAPO relies strictly on the Lipschitz continuity of the Projection Map $\Psi$. Small steps in the graph must result in bounded changes in the logical output.
 
-* **Coarse Operators (Large Norm Primes):** Edges in $\mathcal{G}$ that correspond to generators with large algebraic norms. Empirically, these tend to cause large Hamming distance changes in the materialized path $\Psi(S)$.
-* **Fine Operators (Small Norm Primes):** Edges corresponding to small norm primes. These are used for "local" adjustments where $\Psi(S)$ changes minimally (e.g., only leaf nodes flip).
+* **Coarse Operators (Large Norm Primes):** Edges in $\mathcal{G}$ that correspond to generators with large algebraic norms. These tend to cause larger shifts in the modulo projection.
+* **Fine Operators (Small Norm Primes):** Edges corresponding to small norm primes. These act as "local" adjustments.
 
 **Search Strategy:**
 
-1.  **Expansion:** Generate neighbors 
-    $$\mathcal{N}(S_t) = \{ S_t \circ \epsilon \mid \epsilon \in \mathcal{P} \}$$
+1.  **Expansion:** Generate neighbors
+$$\mathcal{N}(S_t) = \{ S_t \circ \epsilon \mid \epsilon \in \mathcal{P} \}$$
 2.  **Evaluation:** Compute energy $E$ for all neighbors.
 3.  **Selection:** Move to the neighbor with the lowest energy (Greedy Hill Climbing on the Graph).
 
@@ -79,14 +81,29 @@ While the group is discrete, the Projection Map $\Psi$ introduces a pseudo-metri
 
 ## 3. The Body: Topological Materialization
 
-### 3.1 The Projection Map $\Psi$
+### 3.1 The Projection Map $\Psi$ (Corrected)
 
-The bridge between the Algebra and the Logic.
+The bridge between the Algebra and the Logic must preserve local structure to allow optimization. We employ Linear Congruence Projection (LCP) rather than cryptographic hashing.
 
-**Artin-like Projection:**
-We map group elements onto the finite field $\mathbb{Z}_p$.
+**Linear Congruence Projection:**
+We map the reduced form coefficients $(a, b)$ of the ideal class $S$ onto the finite field $\mathbb{Z}_p$.
 
-$$\Psi(S) = [ \text{Hash}(S) \pmod {P_1}, \text{Hash}(S^2) \pmod {P_2}, \dots ]$$
+For the $k$-th step in the logical sequence generated from state $S$:
+
+$$\Psi_k(S) = (a(S) + k \cdot b(S)) \pmod {P}$$
+
+Where:
+* $a(S), b(S)$ are the coefficients of the reduced binary quadratic form representing $S$.
+* $P$ is the projection modulus (dimension of the logical action space).
+* $k$ is the sequence index, introducing linear variation derived from the state itself.
+
+**Why LCP?**
+Unlike a Hash function, LCP is locally continuous. 
+If $S' = S \circ \epsilon$ where $\epsilon$ is a small norm prime, then $|a(S') - a(S)|$ and $|b(S') - b(S)|$ are statistically likely to be small.
+
+$$\implies |\Psi(S') - \Psi(S)| \text{ is small.}$$
+
+This property allows the VAPO optimizer to "sense" that it is getting closer to a correct solution, enabling gradient-like descent on a discrete graph.
 
 ### 3.2 Semantic Adapter
 
@@ -106,7 +123,8 @@ The Proof Bundle is the Path Record:
 
 $$\text{Bundle} = \{ \text{ContextHash}, S_{final}, \text{Path} = [\epsilon_1, \epsilon_2, \dots, \epsilon_k] \}$$
 
-Verification involves replaying the walk on the graph: 
+Verification involves replaying the walk on the graph:
+
 $$S_0 \xrightarrow{\epsilon_1} S_1 \dots \xrightarrow{\epsilon_k} S_{final}$$
 
 ---
@@ -114,9 +132,8 @@ $$S_0 \xrightarrow{\epsilon_1} S_1 \dots \xrightarrow{\epsilon_k} S_{final}$$
 ## 5. Conclusion
 
 HTP is re-specified as:
-
 * **Soul:** A node in the Class Group Cayley Graph.
-* **Will:** An agent performing heuristic search on this graph.
-* **Body:** The projection of the node into logical space.
+* **Will:** An agent performing heuristic search on this graph utilizing the Lipschitz continuity of LCP.
+* **Body:** The linear congruence projection of the node into logical space.
 
 No imaginary manifolds, just rigorous discrete algebra.
