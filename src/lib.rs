@@ -4,17 +4,14 @@ use std::hash::{Hash, Hasher};
 use std::cell::RefCell;
 use num_bigint::BigInt;
 
-// [Import] 引入核心组件
 use crate::soul::algebra::ClassGroupElement;
 use crate::body::topology::VPuNNConfig;
 use crate::dsl::stp_bridge::STPContext;
 use crate::dsl::schema::ProofAction;
 use crate::will::perturber::EnergyEvaluator;
 use crate::will::optimizer;
+use crate::body::decoder; // [Added] 引入解码器
 
-// -------------------------------------------------------------------------
-// 模块声明 (已清理无用模块)
-// -------------------------------------------------------------------------
 pub mod dsl;
 pub mod soul;
 pub mod body {
@@ -28,11 +25,7 @@ pub mod will {
     pub mod perturber;
 }
 
-// 注意：control 和 interface 模块已被移除，因为它们属于旧架构。
-
-// -------------------------------------------------------------------------
-// 辅助结构体：能量评估桥接器
-// -------------------------------------------------------------------------
+// ... StpBridge 实现保持不变 ...
 struct StpBridge<'a> {
     context: &'a RefCell<STPContext>,
 }
@@ -40,11 +33,8 @@ struct StpBridge<'a> {
 impl<'a> EnergyEvaluator for StpBridge<'a> {
     fn evaluate(&self, path: &[u64]) -> f64 {
         // [Logic Decoding]
-        // 将代数路径的第一位映射为逻辑决策
         let decision_seed = path.get(0).unwrap_or(&0);
         
-        // 偶数 -> Even (正确逻辑)
-        // 奇数 -> Odd (错误逻辑)
         let action = if decision_seed % 2 == 0 {
             ProofAction::Define {
                 symbol: "sum_truth".to_string(),
@@ -58,11 +48,8 @@ impl<'a> EnergyEvaluator for StpBridge<'a> {
         };
 
         let mut stp = self.context.borrow_mut();
-        
-        // 1. 尝试定义
         stp.calculate_energy(&action);
 
-        // 2. 检查一致性 (Odd + Odd = Even)
         let check_action = ProofAction::Apply {
             theorem_id: "ModAdd".to_string(),
             inputs: vec!["n".to_string(), "m".to_string()],
@@ -73,9 +60,6 @@ impl<'a> EnergyEvaluator for StpBridge<'a> {
     }
 }
 
-// -------------------------------------------------------------------------
-// PyEvolver (API 暴露)
-// -------------------------------------------------------------------------
 #[pyclass]
 pub struct PyEvolver {
     soul: ClassGroupElement, 
@@ -90,7 +74,6 @@ impl PyEvolver {
         println!("🐱 PyEvolver Initializing with p={}, k={}...", p, k);
 
         let mut stp_ctx = STPContext::new();
-        // 预设环境：n=Odd, m=Odd
         let setup_n = ProofAction::Define { 
             symbol: "n".to_string(), 
             hierarchy_path: vec!["Number".to_string(), "Integer".to_string(), "Odd".to_string()] 
@@ -114,36 +97,27 @@ impl PyEvolver {
     }
 
     fn align(&mut self, context: String) -> Vec<u64> {
+        // 1. 种子注入 (Context Seeding)
         let mut hasher = DefaultHasher::new();
         context.hash(&mut hasher);
         let seed = hasher.finish();
         
+        // 演化灵魂
         self.soul = self.soul.evolve(seed);
 
+        // 2. 优化 (Optimization)
         let evaluator = StpBridge { context: &self.stp };
-        let optimized_soul = optimizer::optimize(&self.soul, &evaluator);
+        
+        // [Architecture Fix]: 将 body config 传入优化器
+        // 确保优化器使用的是正确的投影几何
+        let optimized_soul = optimizer::optimize(&self.soul, &self.body, &evaluator);
 
         self.soul = optimized_soul;
         
-        let materialize = |state: &ClassGroupElement| -> Vec<u64> {
-            let extract_u64 = |n: &BigInt| -> u64 {
-                let (_sign, bytes) = n.to_bytes_le();
-                if bytes.is_empty() { 0 } 
-                else {
-                    let mut buf = [0u8; 8];
-                    let len = std::cmp::min(bytes.len(), 8);
-                    buf[..len].copy_from_slice(&bytes[..len]);
-                    u64::from_le_bytes(buf)
-                }
-            };
-            vec![
-                extract_u64(&state.a),
-                extract_u64(&state.b),
-                extract_u64(&state.c)
-            ]
-        };
-
-        materialize(&self.soul)
+        // 3. 物质化 (Materialization)
+        // [Architecture Fix]: 使用标准的 decoder 生成最终路径
+        // 不再使用本地闭包，确保 Python 拿到的结果与优化器看到的一致
+        decoder::materialize_path(&self.soul, &self.body)
     }
 }
 
