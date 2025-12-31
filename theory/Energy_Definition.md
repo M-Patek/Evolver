@@ -1,91 +1,48 @@
-THEORY PATCH: The Structure of STP Energy
+## Energy Definition: The Discrete Logic Potential
 
-Defining the Evaluation Signal Functional $E$
+### 1. Nature of Energy
+In Evolver, energy $E$ is no longer a continuously differentiable Lyapunov function, but a **Discrete Logic Potential**. It is a binary or integer measure of the "degree of logical violation," directly reflecting the state of the STP (Semi-Tensor Product) engine, Master Meow (主人喵).
 
-1. The Definition Gap
+### 2. Formal Definition
+The energy function 
+$E: \mathcal{A}^* \to \{0, 1, \dots, \infty\}$
+is defined over the sequence of logical actions $\mathcal{A}^*$.
 
-The symbol $E$ (Energy) serves two conflicting masters in the current architecture:
+For a generated proof path $\tau = (a_1, a_2, \dots, a_k)$:
+$$E(\tau) = \sum_{t=1}^k \text{Violation}(S_{t-1}, a_t)$$
 
-Logical Validity: A binary judgment (Valid/Invalid).
+Where $\text{Violation}(S, a)$ is the local logic check function:
+$$\text{Violation}(S, a) = \begin{cases} 0.0 & \text{if } a \text{ is valid in context } S \\ 1.0 & \text{if } a \text{ contradicts } S \text{ or axioms} \\ \text{undefined} & \text{if } a \text{ is syntactically malformed} \end{cases}$$
 
-VAPO Guidance: A continuous gradient-like signal for optimization.
+**Code Mapping:** `src/dsl/stp_bridge.rs`: The `calculate_energy` function directly returns 0.0 or 1.0.
 
-We resolve this by defining Energy as a Discrete Potential with Stochastic Smoothing, explicitly rejecting the classical Lyapunov interpretation which requires continuous differentiability.
+### 3. Energy Landscape
+Since energy is discrete (typically a superposition of 0s and 1s), the optimization landscape appears **Terraced** or **Plateau-like**.
 
-2. Formal Definition
+* **No Gradients:** In any flat region, 
+    $\nabla E = 0$.
+* **Cliffs:** Transitions between states cause instantaneous jumps in energy.
 
-Let $\mathcal{M}$ be the STP algebraic state manifold.
-Let $\Phi: \mathcal{M} \times A \to \mathcal{M}$ be the transition dynamics.
-Let $s_{target}$ be the target state (or subspace) imposed by a logical assertion.
+This explains why we cannot use Gradient Descent. In such a landscape, gradient-based optimizers would stall immediately.
 
-The Hard Logical Energy $E_{logic}$ is defined as:
+### 4. Why Does VAPO Work? (Convergence Mechanism)
+Since there are no gradients, how does VAPO find the global minimum where $E=0$? The answer lies in the connectivity of algebraic space and the chaos of high-dimensional projections.
 
-$$E_{logic}(s, a) = \begin{cases} 0 & \text{if } \Phi(s, a) \subseteq s_{target} \\ \infty & \text{otherwise} \end{cases}$$
+* **Algebraic Ergodicity:** The orbit structure of the Ideal Class Group $Cl(\Delta)$ is extremely rich. By applying perturbations $\epsilon$ of different norms, we can "teleport" from the current state $S$ to distant locations on the manifold.
+* **Projection Sensitivity:** The `project_to_digit` function exhibits an "avalanche effect." A tiny change in the algebraic state $S$ (e.g., incrementing a coefficient $a$ by 1) leads to drastic changes in the generated action sequence.
+* **Probabilistic Collision:** VAPO is essentially performing a guided stochastic collision. While we don't know which direction is "downhill," we know that by continuously jumping along group orbits (and retaining states where energy does not worsen), the Law of Large Numbers and orbital ergodicity ensure we eventually "crash" into the $E=0$ attractor basin.
 
-The Soft Optimization Energy $E_{opt}$ (used by VAPO) is defined as a metric distance on the probability simplex of the state space:
+### 5. Energy Aggregation Rules
+The current energy aggregation logic is very simple (and harsh):
+$$E_{total} = \sum E_{step}$$
 
-$$E_{opt}(s, a) = || \Phi(s, a) - Proj_{target}(\Phi(s, a)) ||_p$$
+As long as a single logical fallacy exists in the path, the total energy will be greater than 0. Evolver does not accept "partially correct" truths.
 
-Current Implementation: Uses the $L_2$ norm (Euclidean distance on the embedding).
+* **Target State:** $E_{total} = 0.0$
+    (Absolute Truth).
+* **Search Strategy:** As long as 
+    $E > 0$,
+    continue to Evolve.
 
-Theoretical Ideal: Should use the $p$-adic Metric $d_p(x, y) = p^{-v_p(x-y)}$ to reflect hierarchical violation severity.
-
-3. The Composition Algebra (Aggregation Rules)
-
-Currently, the code sums energy (total_energy += step_energy). This implies a specific assumption about error independence. We formalize the Energy Aggregation Operator $\bigoplus$.
-
-3.1 Sequential Composition (Time)
-
-For a proof path $\tau = (a_1, a_2, \dots, a_T)$:
-
-$$E_{path}(\tau) = \sum_{t=1}^T \gamma^{T-t} E_{opt}(s_t, a_t)$$
-
-Semantics: Additive cost with discount factor $\gamma$. This encourages fixing errors early (since early errors propagate).
-
-3.2 Logical Composition (Space/Branches)
-
-For a branching proof (e.g., Case Analysis $C_1 \land C_2$):
-
-$$E_{branch}(C_1, C_2) = \max(E(C_1), E(C_2))$$
-
-Semantics: Ultrametric Property. A proof is only as valid as its weakest branch.
-
-4. Convergence Mechanism: Stochastic Smoothing
-
-Correction: Previous versions modeled $E$ as a Lyapunov function. This is incorrect because the Argmax operator creates a "Terraced" landscape (step function) where gradients are zero almost everywhere.
-
-Instead, we rely on Stochastic Smoothing.
-
-The VAPO controller does not optimize the static energy $E(\vec{b})$, but rather the Smoothed Envelope $\tilde{E}(\vec{b})$ induced by the inherent noise of the generator and the search process:
-
-$$\tilde{E}(\vec{b}) = \mathbb{E}_{\epsilon \sim \mathcal{N}(0, \sigma^2)} [ E_{opt}( \text{Argmax}(z + P\vec{b} + \epsilon) ) ]$$
-
-Gradient Restoration: While $\nabla E$ is zero, $\nabla \tilde{E}$ is non-zero and points towards regions of lower average error.
-
-Convergence Condition: We do not guarantee monotonic descent ($\dot{E} \le 0$). Instead, we guarantee Positive Transition Probability:
-
-$$P(E_{t+1} < E_t \mid \vec{b}_t) > \delta > 0$$
-
-Given the ergodic nature of the VAPO search (via large p-adic jumps), the Hitting Time to the absorbing state ($E=0$) is finite almost surely.
-
-5. Type Definition Proposal
-
-The Rust type for Energy should be enriched to support these semantics:
-
-```rust
-enum EnergySignal {
-    /// Perfectly Valid
-    Zero,
-    /// Metric Violation (with magnitude) - Used for Gradient Proxy
-    Scalar(f64),
-    /// Critical Logical Failure (NaN/Inf) - Triggers random restart
-    Infinity,
-    /// Vector of independent constraints (for multi-objective)
-    Vector(Vec<f64>),
-}
-
-impl EnergySignal {
-    fn aggregate_sequential(&self, other: &Self) -> Self { ... } // Add
-    fn aggregate_logical(&self, other: &Self) -> Self { ... }    // Max
-}
-```
+### 6. Summary
+Evolver’s definition of energy returns to the origin of logic: True vs. False. We do not attempt to "smooth out" logic (e.g., using $0.1$ to represent "slightly false"); instead, we embrace the discreteness of logic and leverage the complexity of algebraic groups to conquer it.
