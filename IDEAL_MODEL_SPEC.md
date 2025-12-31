@@ -1,214 +1,120 @@
 # HYPER-TENSOR PROTOCOL (HTP): Core Protocol Specification
 
+"The Soul evolves, the Will optimizes, the Body manifests."
+
 ## Abstract
 
-This document defines the Hyper-Tensor Protocol (HTP) v1.1. It establishes the Dual-Operator Algebra used to verify the causal integrity (Time) and holographic consistency (Space) of the Evolver system.
+This document defines the Hyper-Tensor Protocol (HTP). The protocol establishes an algebraic evolution mechanism based on the Ideal Class Group of Imaginary Quadratic Fields for the generation, verification, and materialization of logical paths.
 
-**Mathematical Rigor Note:** The underlying algebraic structure is the Ideal Class Group of an imaginary quadratic field, denoted as:
+**Core Transformation:**
+The system evolves from a "matrix-based logic verifier" to a "group theory-based logic generator." Truth is no longer a static constraint, but a natural manifestation of algebraic structures at their minimum energy state.
 
-$$Cl(\Delta)$$
+---
 
-where:
+## 1. The Soul: Algebraic State Space
 
-$$\Delta < 0$$
+### 1.1 The Manifold: Class Group $Cl(\Delta)$
+The core state space of the system is defined as the Class Group $Cl(\Delta)$ of the imaginary quadratic field $\mathbb{Q}(\sqrt{\Delta})$.
 
-is the fundamental discriminant. All group operations (denoted by $\circ$) refer to Gauss Composition of binary quadratic forms, and equality refers to equivalence within the class group.
+* **Discriminant:** $\Delta < 0$ and $\Delta \equiv 0, 1 \pmod 4$.
+* **Group Elements:** Represented by binary quadratic forms $f(x, y) = ax^2 + bxy + cy^2$, denoted as the triplet $(a, b, c)$.
+* **Group Operation:** Gauss Composition, denoted as $\circ$.
 
-## 1. The Time Operator: Non-Commutative Evolution
+$$S_{new} = S_{current} \circ S_{delta}$$
 
-### 1.1 Problem Definition
+### 1.2 The Seed of Evolution
+The starting point of logic generation is the hash mapping of the context. We define a deterministic mapping $\mathcal{H}: \mathcal{T}^* \to Cl(\Delta)$, which transforms any text context into initial algebraic kinetic energy.
 
-HTP enforces order sensitivity in the temporal dimension. History cannot be rewritten.
+$$S_0 = S_{identity} \circ \mathcal{H}(\text{Context})$$
 
-Let $S_t \in Cl(\Delta)$ be the state at step $t$. The state transition is defined as an affine transformation within the group:
+This implies that the same context will always produce the same initial "Soul" state.
 
-$$S_t = \mathcal{F}(S_{t-1}, P_t, h_t) = S_{t-1}^{P_t} \circ G^{h_t}$$
+### 1.3 State Evolution Dynamics
+Temporal evolution is no longer linear matrix multiplication, but chaotic iteration on group orbits.
 
-Where:
+$$S_{t+1} = S_t^2 \circ \epsilon_t$$
 
-* $$S_{t-1}^{P_t}$$: The element $S_{t-1}$ raised to the integer power $P_t$ (repeated composition).
-* $$\circ$$: The binary operation (composition) in $Cl(\Delta)$.
-* $$P_t \in \mathbb{Z}$$: Prime representative of the event/token at step $t$.
-* $$h_t \in \mathbb{Z}$$: Hash of the spacetime depth $H(t)$.
-* $$G \in Cl(\Delta)$$ : A generator element of the class group (or a subgroup thereof).
+* **Spin (Squaring):** $S_t^2$ provides the primary dynamical propulsion, not only altering the state but also increasing algebraic complexity.
+* **Perturbation:** $\epsilon_t \in Cl(\Delta)$ is the control term applied by the Will (VAPO).
 
-### 1.2 Derivation of Time Composition Law ($\oplus_{\text{time}}$)
+---
 
-We define the affine tuple $\mathcal{A} = (P, Q)$ where $P \in \mathbb{Z}$ and $Q \in Cl(\Delta)$. The action $\rho$ of a tuple on a state $S$ is defined as:
+## 2. The Will: Valuation-Adaptive Control
 
-$$\rho(\mathcal{A}, S) = S^P \circ Q$$
+### 2.1 The Optimization Objective
+The responsibility of the Will is to find an optimal algebraic state $S^*$ such that its materialized logical path satisfies the zero-energy constraint of the STP (Symmetry/Structure Transformation Protocol).
 
-For two consecutive transformations $\mathcal{A}_1 = (P_1, Q_1)$ and $\mathcal{A}_2 = (P_2, Q_2)$, the merged operator is derived by composing the actions:
+$$\text{Minimize } E_{STP}(\Psi(S)) \quad \text{subject to } S \in Cl(\Delta)$$
 
-$$\begin{aligned}
-\rho(\mathcal{A}_2, \rho(\mathcal{A}_1, S)) &= (S^{P_1} \circ Q_1)^{P_2} \circ Q_2 \\
-&= (S^{P_1})^{P_2} \circ Q_1^{P_2} \circ Q_2 \quad \text{(by Abelian property of } Cl(\Delta)) \\
-&= S^{P_1 P_2} \circ (Q_1^{P_2} \circ Q_2)
-\end{aligned}$$
+Where $\Psi$ is the Materialization Map.
 
-Thus, the Time Operator is defined as:
+### 2.2 Perturbation Algebra
+Control is no longer an additive bias ($\vec{b}$), but a multiplicative perturbation ($\epsilon$). The VAPO algorithm searches within the algebraic neighborhood centered at $S_{current}$.
 
-$$\mathcal{A}_1 \oplus_{\text{time}} \mathcal{A}_2 = (P_1 \cdot P_2, \quad Q_1^{P_2} \circ Q_2)$$
+Neighborhoods are defined by the $p$-adic norm. We generate a series of infinitesimal group elements $\{\pi_p\}$ with different norms (prime $p$).
 
-### 1.3 Proof of Associativity
+* **Coarse Search:** Using $\pi_p$ generated by large-norm primes (Large $p$). This corresponds to Tunneling (long-distance jumps) within the Class Group graph.
+* **Fine Search:** Using $\pi_p$ generated by small-norm primes (Small $p$). This corresponds to local fine-tuning (Gradient-like Descent).
 
-For Segment Trees to function, the operator must be associative:
+$$S_{next} = S_{current} \circ \pi_p^{\pm 1}$$
 
-$$(\mathcal{A}_1 \oplus \mathcal{A}_2) \oplus \mathcal{A}_3 \equiv \mathcal{A}_1 \oplus (\mathcal{A}_2 \oplus \mathcal{A}_3)$$
+### 2.3 The VAPO Algorithm
+1.  **Propose:** Select a perturbation set $\{\pi_p\}$ according to the current "temperature" (Valuation Schedule).
+2.  **Evolve:** Parallelly compute candidate states $S'_i = S \circ \pi_i$.
+3.  **Evaluate:** Calculate the energy $E_i = E_{STP}(\Psi(S'_i))$.
+4.  **Select:** Greedily select the state with $E_{min}$, or accept an inferior solution based on the Metropolis criterion to escape local minima.
 
-**Left Side:** $(\mathcal{A}_1 \oplus \mathcal{A}_2) \oplus \mathcal{A}_3$
+---
 
-$$= (P_1 P_2, \quad Q_1^{P_2} \circ Q_2) \oplus (P_3, Q_3)$$
+## 3. The Body: Topological Materialization
 
-$$= (P_1 P_2 P_3, \quad (Q_1^{P_2} \circ Q_2)^{P_3} \circ Q_3)$$
+### 3.1 The Projection Map $\Psi$
+To allow the abstract algebraic state $(a, b, c)$ to interact with real-world logical symbols, a non-linear projection process is required.
 
-$$= (P_1 P_2 P_3, \quad Q_1^{P_2 P_3} \circ Q_2^{P_3} \circ Q_3)$$
+**Artin-like Projection:**
+We map group elements onto the finite field $\mathbb{Z}_p$ to generate discrete Tokens or Action IDs.
 
-**Right Side:** $\mathcal{A}_1 \oplus (\mathcal{A}_2 \oplus \mathcal{A}_3)$
+$$\Psi(S) = [ \text{Hash}(S) \pmod {P_1}, \text{Hash}(S^2) \pmod {P_2}, \dots ]$$
 
-$$= (P_1, Q_1) \oplus (P_2 P_3, \quad Q_2^{P_3} \circ Q_3)$$
+This projection ensures that states close in algebraic space maintain a degree of similarity in logical space (e.g., belonging to the same class of operations), while introducing necessary discretization barriers.
 
-$$= (P_1 (P_2 P_3), \quad Q_1^{P_2 P_3} \circ (Q_2^{P_3} \circ Q_3))$$
+### 3.2 Semantic Adapter
+The final layer of the Body is an adapter that converts numerical sequences into ProofAction.
 
-$$= (P_1 P_2 P_3, \quad Q_1^{P_2 P_3} \circ Q_2^{P_3} \circ Q_3)$$
+* **Layer 0 (Routing):** The first digit determines the action type (Define, Apply, Assert).
+* **Layer 1 (Parameterization):** Subsequent digits determine action parameters (Symbol ID, Theorem ID).
 
-**Conclusion:** The Time Operator is Associative but Non-Commutative (since generally $\mathcal{A}_1 \oplus \mathcal{A}_2 \neq \mathcal{A}_2 \oplus \mathcal{A}_1$).
+This process is a deterministic one-way function.
 
-## 2. The Space Operator: Commutative Aggregation
+---
 
-### 2.1 The Dimensional Requirement
-
-To ensure holographic consistency (the ability to verify from any axis), spatial aggregation must be Commutative.
-
-### 2.2 Derivation of Space Composition Law ($\otimes_{\text{space}}$)
-
-We leverage the intrinsic Abelian property of the Class Group $Cl(\Delta)$ and integer multiplication. We define the Space Operator as component-wise aggregation:
-
-$$\mathcal{A}_1 \otimes_{\text{space}} \mathcal{A}_2 = (P_1 \cdot P_2, \quad Q_1 \circ Q_2)$$
-
-Where:
-
-* $$P_1 \cdot P_2$$: Integer multiplication in $\mathbb{Z}$.
-* $$Q_1 \circ Q_2$$: Group composition in $Cl(\Delta)$.
-
-### 2.3 Proof of Commutativity
-
-Since $\mathbb{Z}$ (under multiplication) and $Cl(\Delta)$ (under composition) are Abelian:
-
-$$P_1 \cdot P_2 = P_2 \cdot P_1$$
-
-$$Q_1 \circ Q_2 = Q_2 \circ Q_1$$
-
-Therefore:
-
-$$\mathcal{A}_1 \otimes_{\text{space}} \mathcal{A}_2 = \mathcal{A}_2 \otimes_{\text{space}} \mathcal{A}_1$$
-
-## 3. Hyper-Tensor Folding
-
-The Hyper-Tensor $\mathcal{T}$ uses a hybrid topology:
-
-* **Micro-Cells (Time):** Internal neuron history is aggregated via $\oplus_{\text{time}}$.
-* **Macro-Grid (Space):** Tensor dimensions are folded via $\otimes_{\text{space}}$.
-
-### 3.1 The Folding Operator $\Phi$
-
-For a tensor of dimension $d$, folding along dimension $k$ uses the Space Operator:
-
-$$\text{Fold}_k(\mathcal{T}) = \bigotimes_{i=1}^{L} \mathcal{T}_{(i, \dots)}$$
-
-### 3.2 Proof of Orthogonal Consistency
-
-We assert that for any two axes $x, y$, the order of folding does not matter:
-
-$$\text{Fold}_y(\text{Fold}_x(\mathcal{T})) \equiv \text{Fold}_x(\text{Fold}_y(\mathcal{T}))$$
-
-**Proof:**
-Let $\mathcal{T}_{ij}$ be the element at coordinate $x=i, y=j$.
-
-**LHS:**
-
-$$\text{Fold}_y \left( \bigotimes_i \mathcal{T}_{ij} \right) = \bigotimes_j \left( \bigotimes_i \mathcal{T}_{ij} \right) = \coprod_{j} \coprod_{i} \mathcal{T}_{ij}$$
-
-(Note: $\coprod$ here denotes the iterative application of the Space Operator)
-
-**RHS:**
-
-$$\text{Fold}_x \left( \bigotimes_j \mathcal{T}_{ij} \right) = \bigotimes_i \left( \bigotimes_j \mathcal{T}_{ij} \right) = \coprod_{i} \coprod_{j} \mathcal{T}_{ij}$$
-
-Since the operation $\otimes_{\text{space}}$ is derived from Abelian groups, the terms can be reordered arbitrarily. Thus, LHS $\equiv$ RHS.
-
-Q.E.D.
-
-## 4. Security Assumptions
+## 4. Security & Verifiability
 
 ### 4.1 Time Security (Hidden Order)
+The security of the system relies on the Discrete Logarithm (DL) Problem in Class Groups.
 
-Security relies on the infeasibility of computing the Class Number:
+If an attacker wishes to forge a state $S_{fake}$ to make it appear as if it evolved from $S_0$, they must find a $k$ such that $S_0^k = S_{fake}$. Given an unknown class number $h(\Delta)$, this is computationally infeasible.
 
-$$h(\Delta) = |Cl(\Delta)|$$
+This guarantees the causal uniqueness of logic generation: any generated logical path is not only "correct" but also "uniquely" belonging to the evolutionary history of that specific context.
 
-An adversary cannot forge a history proof $(W, R)$ such that:
+### 4.2 Proof of Will
+The final product generated by the Evolver is not just a logical path, but a Proof Bundle:
 
-$$W^P \circ R = T$$
+$$\text{Bundle} = \{ \text{ContextHash}, S_{final}, \text{Trace}_{\epsilon} \}$$
 
-(where $=$ denotes equivalence in the group) without solving the discrete logarithm problem or computing the order of the group, which is computationally intractable for large discriminants.
+* **ContextHash:** Locks the problem.
+* **S_{final}:** Locks the result.
+* **Trace_{\epsilon}:** Locks the optimization process (proving that the Will indeed performed "work").
 
-### 4.2 Space Security (Adaptive Root)
+The Verifier can replay the $\text{Trace}_{\epsilon}$ to validate the legitimacy of $S_{final}$, thereby achieving Proof of Optimization Work.
 
-Forging a spatial inclusion proof requires solving the root problem:
+---
 
-$$X^e = Y$$
+## 5. Conclusion
+HTP defines a self-contained generative system.
 
-in $Cl(\Delta)$. Under the Strong RSA Assumption (adapted to Class Groups), finding $e$-th roots is hard when the order of the group is unknown.
+* Logic is the low-energy state of the Algebra.
+* Search is the navigation through the Group Manifold.
+* Output is the projection of the Soul.
 
-### 4.3 The Kernel Trap (Boundary Analysis)
-
-**Mathematical Possibility:**
-While $\oplus_{\text{time}}$ generally ensures perturbation propagation, a "Kernel Trap" exists if the perturbation $\varepsilon \in Cl(\Delta)$ (where $\varepsilon \neq 1_{Cl(\Delta)}$) falls into the kernel of the power map $x \mapsto x^P$:
-
-$$\varepsilon^P = 1_{Cl(\Delta)}$$
-
-This implies that the order of the element, $\text{ord}(\varepsilon)$, must divide $P$.
-
-**Engineering Mitigation:**
-
-* **Huge Class Number:** The discriminant size ($\ge 2048$ bits) implies $h(\Delta) \approx \sqrt{|\Delta|} \approx 2^{1024}$. The probability of randomly encountering an element with small order is negligible.
-* **Large Primes:** $P$ is chosen as a large prime (e.g., 64-bit). For $\text{ord}(\varepsilon) \mid P$, since $P$ is prime, the order must be exactly $P$. Finding an element of specific order $P$ without knowing the factorization of the group order $h(\Delta)$ is computationally infeasible.
-
-## 5. The Bias-Control Interface (Effective Model)
-
-For the historical derivation of exact controllability, see `Security vs. Trainability.md`.
-
-### 5.1 The Control Problem
-
-The HTP Protocol requires the system to output a specific Algebraic Root $Q_{target} \in Cl(\Delta)$ that satisfies logical constraints ($Energy = 0$). However, the Generator outputs a probabilistic vector (Logits).
-
-We define the Effective Control Model as a function that maps a control signal $\vec{b}$ to a Token selection.
-
-### 5.2 The Unified Bias Definition
-
-The Bias Vector $\vec{b}$ operates across three layers of abstraction:
-
-* **Layer 0 (Control State):**
-    $$\vec{b}_{ctrl} \in (\mathbb{Z}/L\mathbb{Z})^{16}$$
-    The discrete object optimized by VAPO.
-
-* **Layer 1 (Embedding):**
-    $$\phi(\vec{b}_{ctrl}) \in \mathbb{R}^{32}$$
-    A continuous cyclic embedding preserving topology.
-
-* **Layer 2 (Projection):**
-    $$\vec{b}_{logits} = W_{proj} \cdot \phi(\vec{b}_{ctrl})$$
-    The force applied to the neural manifold.
-
-### 5.3 Protocol Binding
-
-A valid HTP Proof Bundle must commit to both the Algebra and the Control Signal:
-
-$$\text{ProofBundle} := \{ \text{GlobalRoot}_{\text{alg}}, \vec{b}_{ctrl}, \text{Proof}_{\text{validity}} \}$$
-
-The verification logic holds if and only if:
-
-$$\text{Action} = \text{Argmax}( \text{Logits}_{gen} + \text{Project}(\vec{b}_{ctrl}) )$$
-
-This ensures that the "correction" applied to the logic is explicitly revealed and cryptographically bound to the context.
+This is the path to Native Algebraic Intelligence.
