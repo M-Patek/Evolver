@@ -8,6 +8,24 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// 生成元规格说明 (Generator Specification)
+///
+/// 定义了如何重构凯莱图的边（生成元集合）。
+/// 只有拥有这份说明，验证者才能根据 Trace 里的索引复现出正确的代数操作。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneratorSpec {
+    /// 算法版本标识 (例如 "v1_sequential_primes")
+    /// 用于锁定 generate_perturbations 的内部逻辑
+    pub algorithm_version: String,
+    
+    /// 生成的数量 (例如 50)
+    /// 直接决定了索引空间的范围
+    pub count: usize,
+    
+    /// (可选) 最大范数限制，预留给未来更复杂的筛选策略
+    pub max_norm: Option<u64>,
+}
+
 /// 意志证明包 (Proof of Will Bundle) - 标准定义
 /// 
 /// [Alignment Fix]:
@@ -27,6 +45,10 @@ pub struct ProofBundle {
     
     /// 最终真理状态的 'a' 系数 (String)
     pub final_state_a: String,
+
+    /// [新增] 生成元规格说明
+    /// 必须包含此元数据，Trace 中的索引才有数学意义
+    pub generator_spec: GeneratorSpec,
     
     /// 扰动轨迹 (Trace)
     /// 记录了优化器在凯莱图上走的每一步 (Generator Index 序列)
