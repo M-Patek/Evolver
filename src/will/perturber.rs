@@ -3,6 +3,12 @@ use num_integer::Integer;
 use num_traits::{One, Zero, Signed, ToPrimitive};
 use crate::soul::algebra::ClassGroupElement;
 
+/// 算法版本常量
+///
+/// 当修改 generate_perturbations 的内部逻辑时，必须同步修改此版本号。
+/// 验证者通过校验此版本号来决定是否接受 ProofBundle。
+pub const ALGORITHM_VERSION: &str = "v1_sequential_primes";
+
 /// 能量评估器特质 (Energy Evaluator Trait)
 ///
 /// 该接口定义了 VAPO 如何与 STP 引擎交互。
@@ -19,7 +25,7 @@ pub trait EnergyEvaluator {
 /// 该模块负责生成用于 VAPO (Valuation-Adaptive Perturbation Optimization) 的微小扰动。
 /// 每一个扰动对应理想类群 $Cl(\Delta)$ 中的一个范数较小的元素。
 ///
-/// 算法原理：
+/// 算法原理 (v1_sequential_primes):
 /// 1. 遍历小素数 p (2, 3, 5...)。
 /// 2. 计算 Kronecker 符号 $(\Delta / p)$。
 /// 3. 如果结果为 1，说明该素数在域中分裂，存在范数为 p 的理想类。
