@@ -8,14 +8,13 @@ use crate::body::decoder::BodyProjector;
 use crate::body::adapter::SemanticAdapter;
 use crate::dsl::stp_bridge::STPContext;
 use crate::will::perturber::EnergyEvaluator;
-use crate::dsl::schema; // 引入 schema 定义
+use crate::dsl::schema;
 
 pub mod soul;
 pub mod will;
 pub mod body;
 pub mod dsl;
 
-// 定义一个简单的 EnergyEvaluator 实现
 struct STPEvaluator;
 impl EnergyEvaluator for STPEvaluator {
     fn evaluate(&self, actions: &[crate::body::adapter::ProofAction]) -> f64 {
@@ -24,14 +23,9 @@ impl EnergyEvaluator for STPEvaluator {
     }
 }
 
-/// Python 暴露的 ProofBundle 包装器
-/// 对应 src/dsl/schema.rs 中的标准定义
 #[pyclass(name = "ProofBundle")]
 #[derive(Clone)]
 pub struct PyProofBundle {
-    // 内部持有 schema 中的标准结构，或者直接映射字段
-    // 为了 PyO3 的易用性，这里直接展开字段，但保证与 schema.rs 1:1 对应
-    
     #[pyo3(get)]
     pub context_hash: String,
     
@@ -75,42 +69,40 @@ fn new_evolver(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
+/// [架构升级] 
+/// PyEvolver 现在是无状态的（相对于具体的代数宇宙）。
+/// 它只持有 "扰动规模" (k) 等超参数配置。
+/// 判别式 Δ 完全由每次 align 调用的 context 决定。
 #[pyclass]
 struct PyEvolver {
-    discriminant: BigInt,
     k: usize,
 }
 
 #[pymethods]
 impl PyEvolver {
+    /// 构造函数不再需要 discriminant_hex
+    /// k: 扰动集合的大小 (影响搜索宽度)
     #[new]
-    fn new(discriminant_hex: String, k: usize) -> PyResult<Self> {
-        let delta = BigInt::from_str_radix(&discriminant_hex, 16)
-            .map_err(|e| PyValueError::new_err(format!("Invalid hex discriminant: {}", e)))?;
-
-        if delta >= BigInt::zero() {
-            return Err(PyValueError::new_err("Discriminant must be negative."));
-        }
-        
-        let rem = &delta % 4;
-        let rem_val = if rem < BigInt::zero() { rem + 4 } else { rem };
-        if rem_val != BigInt::zero() && rem_val != BigInt::from(1) {
-             return Err(PyValueError::new_err("Discriminant must be 0 or 1 mod 4."));
-        }
-
-        Ok(PyEvolver { 
-            discriminant: delta, 
-            k 
-        })
+    fn new(k: usize) -> PyResult<Self> {
+        Ok(PyEvolver { k })
     }
 
     /// 对齐逻辑 (Align Logic)
+    /// 
+    /// 现在执行严格的 "Proof of Will" 流程：
+    /// 1. Context -> Hash -> Δ (Unique Universe)
+    /// 2. Hash -> Seed (Unique Start)
+    /// 3. Evolution -> Zero Energy
     fn align(&self, context: String) -> PyResult<PyProofBundle> {
-        // 1. Inception (SHA-256 Hash Alignment)
-        let (seed, ctx_hash) = ClassGroupElement::from_context(&context, &self.discriminant);
+        // 1. Inception: 动态生成宇宙和种子
+        // 这里会进行素数搜索，确保 Δ 是由 context 唯一决定的
+        let (seed, universe) = ClassGroupElement::spawn_universe(&context);
+        
+        let ctx_hash = universe.context_hash;
+        let discriminant_hex = universe.discriminant.to_str_radix(16);
         let start_seed_clone = seed.clone();
         
-        // 2. The Will (Chaotic Deterministic Search)
+        // 2. The Will: 在这个特定的 Δ 宇宙中进行优化
         let mut optimizer = VapoOptimizer::new(seed);
         
         let mut best_energy = f64::MAX;
@@ -120,12 +112,13 @@ impl PyEvolver {
         
         let p_projection = 997; 
         let evaluator = STPEvaluator;
-        let max_iterations = 50;
+        let max_iterations = 50; 
 
         // 3. Evolution Loop
         for _ in 0..max_iterations {
             let (candidate_state, gen_idx) = optimizer.perturb();
             
+            // 投影和评估
             let path_digits = BodyProjector::project(&candidate_state, self.k, p_projection);
             let logic_actions = SemanticAdapter::materialize(&path_digits);
             let energy = evaluator.evaluate(&logic_actions);
@@ -147,10 +140,9 @@ impl PyEvolver {
         }
 
         // 4. Revelation
-        // 构建标准 Schema 定义的 Bundle
         let bundle = schema::ProofBundle {
-            context_hash: ctx_hash, // 这里是 algebra.rs 返回的 SHA-256 Hex
-            discriminant_hex: self.discriminant.to_str_radix(16),
+            context_hash: ctx_hash,
+            discriminant_hex: discriminant_hex, // 现在的 Δ 是动态生成的
             start_seed_a: start_seed_clone.a.to_string(),
             final_state_a: best_state.a.to_string(),
             perturbation_trace: optimizer.trace.clone(),
@@ -158,7 +150,6 @@ impl PyEvolver {
             energy: best_energy,
         };
 
-        // 转换为 Python 包装类
         Ok(PyProofBundle::from(bundle))
     }
 }
