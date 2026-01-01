@@ -1,49 +1,63 @@
+// src/lib.rs
+// 核心库入口: 连接 Soul, Will 和 Body
+
 use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
-use num_bigint::{BigInt, Sign};
-use num_traits::{Num, Zero};
+use num_bigint::BigInt;
 use crate::soul::algebra::ClassGroupElement;
 use crate::will::optimizer::VapoOptimizer;
-use crate::body::decoder::BodyProjector;
-use crate::body::adapter::SemanticAdapter;
+use crate::body::topology::VPuNNConfig;
 use crate::dsl::stp_bridge::STPContext;
 use crate::will::perturber::EnergyEvaluator;
-use crate::dsl::schema;
+use crate::dsl::schema::{self, ProofAction};
+
+// 引入真实的函数式接口
+use crate::body::decoder::materialize_path;
+use crate::body::adapter::path_to_proof_action;
 
 pub mod soul;
 pub mod will;
 pub mod body;
 pub mod dsl;
 
+// ==========================================
+// [Fix] STPEvaluator 接口修复
+// ==========================================
+
 struct STPEvaluator;
+
 impl EnergyEvaluator for STPEvaluator {
-    fn evaluate(&self, actions: &[crate::body::adapter::ProofAction]) -> f64 {
+    // 严格遵守 Trait 定义：接收 digits (&[u64])
+    fn evaluate(&self, digits: &[u64]) -> f64 {
+        // 1. 翻译: 将数字信号 (Will) 转换为逻辑动作 (Logic)
+        // 注意: 目前 Adapter 将整个路径映射为一个复杂动作
+        let action = path_to_proof_action(digits);
+        let actions = vec![action]; // 包装为 Vec 供 STP 消费
+
+        // 2. 计算: 调用 STP 引擎
         let mut stp = STPContext::new();
-        stp.calculate_energy(actions)
+        stp.calculate_energy(&actions)
     }
 }
+
+// ==========================================
+// PyProofBundle 定义
+// ==========================================
 
 #[pyclass(name = "ProofBundle")]
 #[derive(Clone)]
 pub struct PyProofBundle {
     #[pyo3(get)]
     pub context_hash: String,
-    
     #[pyo3(get)]
     pub discriminant_hex: String,
-    
     #[pyo3(get)]
     pub start_seed_a: String,
-    
     #[pyo3(get)]
     pub final_state_a: String,
-    
     #[pyo3(get)]
     pub perturbation_trace: Vec<usize>,
-    
     #[pyo3(get)]
     pub logic_path: Vec<String>,
-    
     #[pyo3(get)]
     pub energy: f64,
 }
@@ -62,6 +76,10 @@ impl From<schema::ProofBundle> for PyProofBundle {
     }
 }
 
+// ==========================================
+// PyEvolver 主逻辑
+// ==========================================
+
 #[pymodule]
 fn new_evolver(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyEvolver>()?;
@@ -69,10 +87,6 @@ fn new_evolver(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
-/// [架构升级] 
-/// PyEvolver 现在是无状态的（相对于具体的代数宇宙）。
-/// 它只持有 "扰动规模" (k) 等超参数配置。
-/// 判别式 Δ 完全由每次 align 调用的 context 决定。
 #[pyclass]
 struct PyEvolver {
     k: usize,
@@ -80,37 +94,34 @@ struct PyEvolver {
 
 #[pymethods]
 impl PyEvolver {
-    /// 构造函数不再需要 discriminant_hex
-    /// k: 扰动集合的大小 (影响搜索宽度)
     #[new]
     fn new(k: usize) -> PyResult<Self> {
         Ok(PyEvolver { k })
     }
 
-    /// 对齐逻辑 (Align Logic)
-    /// 
-    /// 现在执行严格的 "Proof of Will" 流程：
-    /// 1. Context -> Hash -> Δ (Unique Universe)
-    /// 2. Hash -> Seed (Unique Start)
-    /// 3. Evolution -> Zero Energy
     fn align(&self, context: String) -> PyResult<PyProofBundle> {
         // 1. Inception: 动态生成宇宙和种子
-        // 这里会进行素数搜索，确保 Δ 是由 context 唯一决定的
         let (seed, universe) = ClassGroupElement::spawn_universe(&context);
         
         let ctx_hash = universe.context_hash;
         let discriminant_hex = universe.discriminant.to_str_radix(16);
         let start_seed_clone = seed.clone();
         
-        // 2. The Will: 在这个特定的 Δ 宇宙中进行优化
+        // 2. The Will: 优化器初始化
         let mut optimizer = VapoOptimizer::new(seed);
         
         let mut best_energy = f64::MAX;
         let mut best_path_digits = Vec::new();
-        let mut best_actions_strings = Vec::new();
+        let mut best_logic_path_strings = Vec::new();
         let mut best_state = start_seed_clone.clone();
         
-        let p_projection = 997; 
+        // [Fix] 构造真实的配置对象
+        let config = VPuNNConfig {
+            depth: self.k, // 使用 k 控制路径深度
+            p_base: 997,   // 投影模数
+            layer_decay: 0.9, // 假设存在此字段，若 topology.rs 无此字段可删除
+        };
+
         let evaluator = STPEvaluator;
         let max_iterations = 50; 
 
@@ -118,16 +129,20 @@ impl PyEvolver {
         for _ in 0..max_iterations {
             let (candidate_state, gen_idx) = optimizer.perturb();
             
-            // 投影和评估
-            let path_digits = BodyProjector::project(&candidate_state, self.k, p_projection);
-            let logic_actions = SemanticAdapter::materialize(&path_digits);
-            let energy = evaluator.evaluate(&logic_actions);
+            // [Fix] 调用 materialize_path (Body)
+            let path_digits = materialize_path(&candidate_state, &config);
+            
+            // [Fix] 评估能量 (Will -> Logic)
+            let energy = evaluator.evaluate(&path_digits);
 
             if energy < best_energy {
                 best_energy = energy;
-                best_path_digits = path_digits;
+                best_path_digits = path_digits.clone();
                 best_state = candidate_state.clone();
-                best_actions_strings = logic_actions.iter().map(|a| format!("{:?}", a)).collect();
+                
+                // 将最佳结果转换为字符串以便人类阅读
+                let action = path_to_proof_action(&best_path_digits);
+                best_logic_path_strings = vec![format!("{:?}", action)];
                 
                 optimizer.accept(candidate_state, gen_idx);
             } else {
@@ -140,13 +155,20 @@ impl PyEvolver {
         }
 
         // 4. Revelation
+        let generator_spec = schema::GeneratorSpec {
+            algorithm_version: "v1_sequential_primes".to_string(),
+            count: 50, // 需与 optimizer 内部保持一致
+            max_norm: None,
+        };
+
         let bundle = schema::ProofBundle {
             context_hash: ctx_hash,
-            discriminant_hex: discriminant_hex, // 现在的 Δ 是动态生成的
+            discriminant_hex: discriminant_hex,
             start_seed_a: start_seed_clone.a.to_string(),
             final_state_a: best_state.a.to_string(),
+            generator_spec: generator_spec,
             perturbation_trace: optimizer.trace.clone(),
-            logic_path: best_actions_strings,
+            logic_path: best_logic_path_strings,
             energy: best_energy,
         };
 
