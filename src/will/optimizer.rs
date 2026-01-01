@@ -2,6 +2,7 @@ use num_bigint::BigInt;
 use num_traits::{Zero, Signed};
 use crate::soul::algebra::ClassGroupElement;
 use crate::will::perturber::{self, EnergyEvaluator};
+use crate::dsl::schema::GeneratorSpec;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 use rand::{Rng, SeedableRng};
@@ -14,23 +15,43 @@ pub struct VapoOptimizer {
     pub trace: Vec<usize>, // 记录选择的 generator 索引，用于 Proof 重放
     generators: Vec<ClassGroupElement>, // 缓存生成元
     iteration_count: usize,
+    
+    // [Alignment Fix]: 记录生成元规格，以便包含在 ProofBundle 中
+    pub generator_spec: GeneratorSpec,
 }
 
 impl VapoOptimizer {
     /// 初始化优化器
     pub fn new(start_seed: ClassGroupElement) -> Self {
         // 在初始化时预生成所有扰动算子 (Generators)
-        // 生产环境 VAPO 会使用更复杂的生成策略
         let delta = start_seed.discriminant();
-        // 生成足够多的扰动算子以覆盖搜索空间
-        let generators = perturber::generate_perturbations(&delta, 50);
+        
+        // 定义生成策略
+        // 注意：这里的 count 应该与 production 环境保持一致，或者作为参数传入。
+        // 为了修复可验证性，我们在这里硬编码的同时记录下来。
+        let gen_count = 50;
+        let algorithm_version = perturber::ALGORITHM_VERSION.to_string();
+        
+        let generators = perturber::generate_perturbations(&delta, gen_count);
+
+        let generator_spec = GeneratorSpec {
+            algorithm_version,
+            count: gen_count,
+            max_norm: None,
+        };
 
         Self {
             current_seed: start_seed,
             trace: Vec::new(),
             generators,
             iteration_count: 0,
+            generator_spec,
         }
+    }
+
+    /// 获取当前的生成元规格
+    pub fn get_spec(&self) -> GeneratorSpec {
+        self.generator_spec.clone()
     }
 
     /// 扰动 (Perturb): 意志的决策
