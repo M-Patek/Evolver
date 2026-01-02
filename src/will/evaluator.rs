@@ -18,32 +18,42 @@ impl Evaluator for GeometricEvaluator {
 }
 
 /// STP 评估器 (Rigorous Evaluator)
-/// 
-/// 实现了 "Unified Energy Metric"：
-/// Energy = Barrier(Exact) + Residual(Heuristic)
+/// 实现了完整的 Unified Energy Metric:
+/// J(S) = E_barrier(Exact) + lambda * E_residual(Continuous)
 pub struct StpEvaluator {
     projector: Projector,
     action_count: usize,
     digits_per_action: usize,
+    
+    /// [New] 目标特征向量 (The Desire)
+    /// 优化器将试图寻找代数状态 S，使其几何特征接近此目标。
+    /// 这提供了优化所需的“斜率”。
+    target_features: Vec<f64>,
+    
+    /// [New] 残差权重 (Lambda)
+    residual_weight: f64,
 }
 
 impl StpEvaluator {
-    pub fn new(projector: Projector, action_count: usize) -> Self {
+    pub fn new(projector: Projector, action_count: usize, target_features: Vec<f64>) -> Self {
         Self { 
             projector, 
             action_count,
-            digits_per_action: 3, 
+            digits_per_action: 3,
+            target_features,
+            residual_weight: 0.1, // 权重需调节，不能淹没 Barrier 的信号
         }
     }
 }
 
 impl Evaluator for StpEvaluator {
     fn evaluate(&self, state: &IdealClass) -> f64 {
+        // --- 1. 计算离散势垒 (Discrete Barrier, Truth) ---
+        // 这一步非常昂贵且不连续，它定义了“有效性”的悬崖。
+        
         let total_digits = self.action_count * self.digits_per_action;
         let mut current_state = state.clone();
         
-        // --- 1. 计算离散势垒 (Discrete Barrier) ---
-        // 使用 Project_Exact: 只有完美的代数状态才能通过 STP 检查
         let mut exact_path = Vec::with_capacity(total_digits);
         for t in 0..total_digits {
             exact_path.push(self.projector.project_exact(&current_state, t as u64));
@@ -58,25 +68,28 @@ impl Evaluator for StpEvaluator {
         let mut context = STPContext::new();
         let barrier_energy = context.calculate_energy(&actions);
 
-        // 如果已经是完美逻辑 (Barrier == 0)，直接返回 0 (Done)
-        if barrier_energy < 1e-6 {
-            return 0.0;
-        }
-
-        // --- 2. 计算连续残差 (Continuous Residual) ---
-        // 使用 Project_Heuristic: 提供梯度方向引导优化器进入正确的 Basin
-        // 这里简化实现：我们只看第一步的启发式投影与目标的“距离”
-        // (注：这只是一个示意，完整的 Residual 计算需要定义 Target Feature)
+        // 如果 Barrier 极高 (逻辑完全崩坏)，我们仍然计算 Residual，
+        // 这样 VAPO 即使在错误区域也能知道往哪个方向“爬”能接近目标结构。
         
-        // Reset state for heuristic check
-        let heuristic_digit = self.projector.project_heuristic(state, 0);
-        let residual_energy = (heuristic_digit as f64) * 0.001; // 极小的权重，仅作 Tie-breaker
+        // --- 2. 计算连续残差 (Continuous Residual, Will) ---
+        // J_residual = || Psi(S) - Target ||^2
+        
+        let current_features = self.projector.project_continuous(state);
+        
+        let residual_dist_sq: f64 = current_features.iter()
+            .zip(self.target_features.iter())
+            .map(|(a, b)| (a - b).powi(2))
+            .sum();
+
+        let residual_energy = self.residual_weight * residual_dist_sq;
 
         // Total J(S)
+        // 注意：Barrier 通常是 0, 10, 100 这种离散值
+        // Residual 通常是 0.0 ~ 2.0 这种连续值
         barrier_energy + residual_energy
     }
 
     fn name(&self) -> &'static str {
-        "STP (Split Projection)"
+        "STP + Geometric Residual"
     }
 }
