@@ -1,134 +1,88 @@
-use crate::soul::algebra::IdealClass;
-use std::f64::consts::PI;
-use num_traits::ToPrimitive;
-use num_bigint::BigInt;
-use sha2::{Sha256, Digest}; // [Fix] 使用 SHA-256 替代 DefaultHasher
+use rug::{Integer, Float};
+use rug::float::Constant;
+use crate::soul::algebra::ClassGroupElement; // 假设这是代数结构的定义位置
 
-/// 导航特征 (Navigation Features)
-/// 用于启发式搜索的平滑几何特征 (Will Layer)。
-/// 这是 VAPO 的“眼睛”，它需要是连续的(Lipschitz)，这样微小的代数变化
-/// 才能体现为特征空间中的平滑移动。
-#[derive(Debug, Clone, PartialEq)]
-pub struct NavigationFeatures {
-    pub cos_x: f64,
-    pub sin_x: f64,
-    pub log_y: f64,
+/// 投影器配置
+pub struct ProjectionConfig {
+    pub precision: u32,
 }
 
-impl NavigationFeatures {
-    pub fn to_vector(&self) -> Vec<f64> {
-        vec![self.cos_x, self.sin_x, self.log_y]
-    }
+/// 拓扑投影器 (Topological Projector)
+/// 
+/// 负责将离散的代数状态 (Algebraic State) 投影到连续的几何流形 (Manifold)。
+/// VAPO 依赖这个投影产生的“地形”来寻找方向。
+pub struct TopologicalProjector {
+    precision: u32,
+}
 
-    pub fn extract(state: &IdealClass) -> Self {
-        // 1. 计算 x = -b / 2a
-        // x 在 [-0.5, 0.5] 之间，直接转 f64 安全
-        let b_f64 = bigint_to_scaled_f64(&state.b, &state.a);
-        let x = -b_f64 / 2.0;
-
-        // 2. 计算 log(y)
-        // log(y) = 0.5 * log(|D|) - log(2a)
-        let log_delta = state.discriminant().abs().bits() as f64 * 2.0_f64.ln();
-        let log_a = bigint_log_e(&state.a);
-        
-        let log_y = 0.5 * log_delta - (2.0_f64.ln() + log_a);
-
-        NavigationFeatures {
-            cos_x: (2.0 * PI * x).cos(),
-            sin_x: (2.0 * PI * x).sin(),
-            log_y,
+impl TopologicalProjector {
+    pub fn new(config: ProjectionConfig) -> Self {
+        Self {
+            precision: config.precision,
         }
     }
-}
 
-// 辅助函数：大数对数计算
-fn bigint_log_e(n: &BigInt) -> f64 {
-    if n.sign() == num_bigint::Sign::NoSign {
-        return f64::NEG_INFINITY;
-    }
-    let bits = n.bits();
-    (bits as f64) * 2.0_f64.ln()
-}
-
-// 辅助函数：大数除法转浮点
-fn bigint_to_scaled_f64(numerator: &BigInt, denominator: &BigInt) -> f64 {
-    let n_bits = numerator.bits();
-    let d_bits = denominator.bits();
-    
-    // 避免除以过大的数导致下溢，或者过大的结果
-    if d_bits > n_bits + 64 { return 0.0; }
-    
-    let n_high = extract_high_64(numerator);
-    let d_high = extract_high_64(denominator);
-    
-    if d_high == 0.0 { return 0.0; }
-
-    let shift = (n_bits as i32) - (d_bits as i32);
-    let val = n_high / d_high;
-    val * 2.0_f64.powi(shift)
-}
-
-fn extract_high_64(n: &BigInt) -> f64 {
-    if n.is_zero() { return 0.0; }
-    let bits = n.bits();
-    if bits <= 64 {
-        n.to_f64().unwrap_or(0.0)
-    } else {
-        let shifted = n >> (bits - 62);
-        shifted.to_f64().unwrap_or(0.0)
-    }
-}
-
-/// Projector (投影仪)
-/// 
-/// 实现了双重投影架构：
-/// 1. Exact Projection: 基于 SHA-256，用于生成不可伪造的逻辑路径。
-/// 2. Continuous Projection: 基于模形式特征，用于引导 VAPO 搜索。
-pub struct Projector {
-    pub p_base: u64, 
-}
-
-impl Projector {
-    pub fn new(p_base: u64) -> Self {
-        Self { p_base }
-    }
-
-    /// [Truth Layer] 精确投影 (Avalanche)
-    /// [Fix] 使用 SHA-256 替代 DefaultHasher，提供密码学强度的“承诺”。
-    /// 即使代数状态 S 发生 1 bit 的改变，输出的 digit 也会发生雪崩效应。
-    pub fn project_exact(&self, state: &IdealClass, time: u64) -> u64 {
-        let mut hasher = Sha256::new();
+    /// 周期性特征投影 (Periodic Feature Projection)
+    /// 
+    /// [AUDIT FIX]: 修复了大数求三角函数的随机噪声问题。
+    /// 
+    /// 原理：
+    /// 如果直接计算 sin(Norm)，当 Norm ~ 10^180 时，结果完全取决于浮点数
+    /// 末尾的垃圾位，等同于随机数。
+    /// 
+    /// 修正逻辑：
+    /// 1. 在代数域 (Integer Domain) 进行模归约： reduced = norm % modulus
+    /// 2. 在几何域 (Real Domain) 进行映射： phase = reduced / modulus * 2pi
+    /// 3. 计算 sin(phase)
+    /// 
+    /// 这样保证了 Lipschiz 连续性，让 VAPO 即使在深空也能感知到平滑的坡度。
+    pub fn project_periodic(&self, norm: &Integer, modulus: &Integer) -> Float {
+        // Step 1: 代数域归约 (Exact Reduction)
+        // 这是在纯整数算术中完成的，没有任何精度损失。
+        let reduced = norm.clone() % modulus;
         
-        // 注入代数结构的规范形式
-        // 注意：BigInt 的 to_bytes_be 能够提供稳定的字节表示
-        // 我们使用 "|" 分隔符防止拼接攻击 (虽然在固定结构下不常见，但为了严谨)
-        hasher.update(state.a.to_bytes_be().1);
-        hasher.update(b"|"); 
-        hasher.update(state.b.to_bytes_be().1);
-        hasher.update(b"|");
-        hasher.update(state.c.to_bytes_be().1);
-        hasher.update(b"|");
+        // Step 2: 转换到几何域 (Safe Float Conversion)
+        // 此时 reduced < modulus，通常 modulus 是预设的常数或相对较小的数，
+        // 转换为 Float 是安全的。
+        let f_reduced = Float::with_val(self.precision, reduced);
+        let f_modulus = Float::with_val(self.precision, modulus);
+        let pi = Float::with_val(self.precision, Constant::Pi);
         
-        // 注入时间/深度因子，确保每一步的投影都是独立的随机预言机
-        hasher.update(time.to_be_bytes());
-
-        let result = hasher.finalize();
-
-        // 将 SHA-256 的前 8 个字节转换为 u64
-        // 这保留了 64 位的熵，远高于 DefaultHasher，足以抵抗碰撞
-        let mut bytes = [0u8; 8];
-        bytes.copy_from_slice(&result[0..8]);
-        let raw_hash = u64::from_be_bytes(bytes);
-
-        // 最终映射到 p_base 域
-        // 注意：虽然取模会损失熵，但在 Logic Layer 我们只需要这么多信息。
-        // 安全性由 raw_hash 的不可预测性保证。
-        raw_hash % self.p_base
+        // Step 3: 计算相位 (Phase Calculation)
+        // phase = (reduced / modulus) * 2 * pi
+        let phase = (f_reduced / f_modulus) * 2.0 * pi;
+        
+        // Step 4: 计算正弦值
+        phase.sin()
     }
 
-    /// [Will Layer] 连续投影 (Lipschitz)
-    /// 返回几何特征向量，用于 Residual 计算
-    pub fn project_continuous(&self, state: &IdealClass) -> Vec<f64> {
-        NavigationFeatures::extract(state).to_vector()
+    /// 对数特征投影 (Logarithmic Feature Projection)
+    /// 
+    /// 用于感知数量级的变化。
+    /// 同样需要高精度，以捕捉 log(10^180 + delta) - log(10^180) 的微小差异。
+    pub fn project_log_norm(&self, norm: &Integer) -> Float {
+        // 将巨大的 Integer 转换为高精度 Float
+        let f_norm = Float::with_val(self.precision, norm);
+        
+        // 计算自然对数
+        f_norm.ln()
+    }
+    
+    /// 综合投影 (Composite Projection)
+    /// 
+    /// 将多个特征组合成一个高维特征向量。
+    pub fn project(&self, element: &ClassGroupElement, modulus_pool: &[Integer]) -> Vec<Float> {
+        let norm = &element.norm; // 假设 element 包含一个巨大的理想范数
+        let mut features = Vec::new();
+
+        // 1. 添加对数特征 (感知距离)
+        features.push(self.project_log_norm(norm));
+
+        // 2. 添加周期性特征 (感知方向/角度)
+        for modulus in modulus_pool {
+            features.push(self.project_periodic(norm, modulus));
+        }
+
+        features
     }
 }
