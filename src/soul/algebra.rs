@@ -5,6 +5,24 @@ use serde::{Serialize, Deserialize};
 use std::mem;
 use sha2::{Sha256, Digest};
 use std::fmt;
+use thiserror::Error; // 引入 thiserror 喵！
+
+/// Evolver 系统错误定义
+/// 这里的错误是可以被 VAPO 捕捉并转化为能量惩罚的
+#[derive(Error, Debug, Clone, PartialEq)]
+pub enum EvolverError {
+    #[error("Cosmic Mismatch (Universe Violation): {0} vs {1}")]
+    CosmicMismatch(String, String),
+    
+    #[error("Singularity: Division by zero detected")]
+    Singularity,
+    
+    #[error("Numerical Instability: Result became NaN or Infinite")]
+    NumericalInstability,
+
+    #[error("Invalid State: {0}")]
+    InvalidState(String),
+}
 
 /// 理想类 (Ideal Class)
 /// 代表虚二次域 Cl(Δ) 中的二元二次型 (a, b, c) -> ax^2 + bxy + cy^2
@@ -23,7 +41,6 @@ impl PartialEq for IdealClass {
 }
 impl Eq for IdealClass {}
 
-// 用于显示错误
 impl fmt::Display for IdealClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}, {}, {}]", self.a, self.b, self.c)
@@ -37,59 +54,51 @@ pub struct Universe {
 }
 
 impl IdealClass {
-    /// 构造新元素
     pub fn new(a: BigInt, b: BigInt, c: BigInt) -> Self {
         Self { a, b, c }
     }
 
     /// [Security Check] 验证两个元素是否属于同一个宇宙 (判别式相同)
-    pub fn ensure_same_universe(&self, other: &Self) -> Result<(), String> {
+    /// 现在的返回值是 Result，不再是 Panic 喵！
+    pub fn ensure_same_universe(&self, other: &Self) -> Result<(), EvolverError> {
         let delta_self = self.discriminant();
         let delta_other = other.discriminant();
         
         if delta_self != delta_other {
-            return Err(format!(
-                "Universe Mismatch! \nSelf Δ: {}\nOther Δ: {}", 
-                delta_self, delta_other
+            return Err(EvolverError::CosmicMismatch(
+                delta_self.to_string(), 
+                delta_other.to_string()
             ));
         }
         Ok(())
     }
 
-    /// 从上下文哈希初始化种子
     pub fn from_hash(context: &str, _p: u64) -> Self {
         let (seed, _) = Self::spawn_universe(context);
         seed
     }
 
     /// 自旋演化 (VDF Squaring)
-    pub fn square(&self) -> Self {
+    pub fn square(&self) -> Result<Self, EvolverError> {
         self.compose(self)
     }
 
-    /// 获取判别式 Δ = b^2 - 4ac
     pub fn discriminant(&self) -> BigInt {
         (&self.b * &self.b) - (BigInt::from(4) * &self.a * &self.c)
     }
 
-    /// 真正的 "Contextual Universe Generation"
     pub fn spawn_universe(context: &str) -> (Self, Universe) {
-        // Step 1: 扩展熵 (Expand Entropy to 2048 bits)
         let target_bits = 2048; 
         let expanded_bytes = expand_entropy(context, target_bits / 8);
-        
         let seed_bigint = BigInt::from_bytes_be(Sign::Plus, &expanded_bytes);
 
-        // 保存初始 Context Hash 用于标识
         let mut hasher = Sha256::new();
         hasher.update(context.as_bytes());
         let context_hash = format!("{:x}", hasher.finalize());
 
-        // Step 2: 寻找宇宙常数 M (Next Prime M ≡ 3 mod 4)
         let m_prime = next_prime_3_mod_4(seed_bigint.clone());
-        let delta = -m_prime; // Δ = -M
+        let delta = -m_prime;
 
-        // Step 3: 在确定的 Δ 宇宙中生成种子
         let element = Self::generate_seed_in_delta(&delta, &seed_bigint);
 
         let universe = Universe {
@@ -100,18 +109,14 @@ impl IdealClass {
         (element, universe)
     }
 
-    /// 在给定的 Δ 中生成合法种子
     fn generate_seed_in_delta(delta: &BigInt, initial_entropy: &BigInt) -> Self {
         let four = BigInt::from(4);
-        
-        // 我们需要一个 b，使得 b^2 ≡ Δ (mod 4)
         let mut b_curr = initial_entropy.clone();
         
         if (&b_curr % 2).is_zero() {
             b_curr += BigInt::one();
         }
 
-        // 计算 a = (b^2 - Δ) / 4
         let b_sq = &b_curr * &b_curr;
         let num = b_sq - delta;
         
@@ -124,14 +129,10 @@ impl IdealClass {
     }
 
     /// 高斯合成算法 (Gaussian Composition)
-    /// [Update] 现在包含强制的宇宙一致性检查
-    pub fn compose(&self, other: &Self) -> Self {
-        // 1. 严格性检查 (Algebraic Soundness)
-        if let Err(e) = self.ensure_same_universe(other) {
-            // 在 Rust 中，对于这种违反数学公理的操作，Panic 是合理的，
-            // 或者我们可以返回 Result，但在 trait 实现或 core logic 中 panic 更能暴露逻辑漏洞。
-            panic!("FATAL: {}", e);
-        }
+    /// [Robustness Fix] 现在返回 Result<Self, EvolverError>
+    pub fn compose(&self, other: &Self) -> Result<Self, EvolverError> {
+        // 1. 严格性检查
+        self.ensure_same_universe(other)?;
 
         let delta = self.discriminant();
         let two = BigInt::from(2);
@@ -147,6 +148,12 @@ impl IdealClass {
 
         let egcd2 = d1.extended_gcd(&s);
         let d = egcd2.gcd;
+        
+        // [Safety] 检查除零奇点
+        if d.is_zero() {
+            return Err(EvolverError::Singularity);
+        }
+
         let big_u = egcd2.x;
         let big_v = egcd2.y;
 
@@ -162,16 +169,27 @@ impl IdealClass {
         let b3_raw = &other.b + &factor * &big_k;
 
         let two_a3 = &two * &a3;
+        
+        // [Safety] 检查约化基是否为零
+        if two_a3.is_zero() {
+            return Err(EvolverError::Singularity);
+        }
+
         let b3 = b3_raw.rem_euclid(&two_a3); 
 
         let b3_sq = &b3 * &b3;
         let num = &b3_sq - &delta;
         let four_a3 = &two * &two_a3;
+        
+        if four_a3.is_zero() {
+            return Err(EvolverError::Singularity);
+        }
+
         let c3 = num / four_a3;
 
         let mut result = IdealClass::new(a3, b3, c3);
         result.reduce(); 
-        result
+        Ok(result)
     }
 
     pub fn inverse(&self) -> Self {
@@ -180,9 +198,10 @@ impl IdealClass {
         res
     }
 
-    /// 约化算法 (Reduction Algorithm)
     fn reduce(&mut self) {
         let two_a = &self.a << 1; 
+        if two_a.is_zero() { return; } // 防止死循环
+
         loop {
             if self.b.abs() > self.a {
                 let mut r = &self.b % &two_a; 
@@ -216,7 +235,7 @@ impl IdealClass {
     }
 }
 
-// --- Helper Functions (保持原样) ---
+// --- Helper Functions ---
 fn expand_entropy(input: &str, target_bytes: usize) -> Vec<u8> {
     let mut result = Vec::with_capacity(target_bytes);
     let mut counter = 0u32;
