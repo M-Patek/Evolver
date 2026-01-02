@@ -1,105 +1,74 @@
-# Constraint Semantics: The Rules of Algebra
+# Constraint Semantics & Trust Model
 
-## 1. The Nature of Constraints
+## 1. Core Shift: From "Correct-by-Construction" to "Formally Verifiable"
 
-In this architecture, a "Constraint" is no longer an additional rule imposed on an external generator, but rather an intrinsic property of the algebraic structure itself.
-Constraints define validity. Only state sequences that satisfy specific algebraic and logical rules can be recognized as "Truth."
+In the early designs of Evolver, we utilized the term "Correct-by-Construction." To pursue absolute mathematical rigor, we have now refined this to "Formally Verifiable Search."
 
-## 2. The Dual Binding Principle
+Evolver does not promise that a "solution will definitely be found." Instead, it promises that "if a solution is found, it must strictly adhere to the laws of physics, and this conclusion can be verified by a third party at a low cost."
 
-To ensure that the generation process represents genuine reasoning, we enforce a Dual Binding between the Semantics (Context) and the Mathematics (State).
+We divide the system's trust boundaries into three levels:
 
-### 2.1 The Physical Binding (Context $\to$ $\Delta$)
-
-The prompt is not just an input; it is the Genesis of the mathematical universe.
-
-**Mechanism:**
-$$\Delta = \text{HashToPrime}(Context)$$
-
-**Effect:** The specific "terrain" of the Cayley Graph (its diameter, cycles, and connectivity) is physically shaped by the meaning of the question.
-
-**Result:** You cannot traverse the map of "Question A" to find the answer to "Question B". They exist in disjoint mathematical universes.
-
-### 2.2 The Teleological Binding (Context $\to$ $E_{STP}$)
-
-The prompt defines the "Gravity" (Energy Potential) of the universe.
-
-**Mechanism:** The Zero-Energy Manifold $\mathcal{M}_{truth}$ is defined strictly by the logical assertions required by the Context.
-
-**Effect:** A path is only "downhill" (energetically favorable) if it semantically aligns with the prompt's requirements.
-
-**Result:** The "Will" (Optimizer) is forced to reason (search) towards the specific semantic goal, because that is the only way to lower its energy state.
+| Level | Attribute | Responsible Party | Guarantee |
+| :--- | :--- | :--- | :--- |
+| **L0** | **Soundness** | Soul (STP Kernel) | If $x_{t+1} = M \ltimes x_t$, then $x_{t+1}$ strictly satisfies defined logical constraints. |
+| **L1** | **Verifiability** | Tracer | Given initial state $x_0$ and action sequence $u_{0:k}$, anyone can replicate the evolution path. |
+| **L2** | **Completeness** | Will (Optimizer) | No guarantee. The optimizer makes a best-effort attempt to find a path where $E \to 0$, but may fall into local optima. |
 
 ---
 
-## 3. Formal Definition
+## 2. Level 0: Logical Soundness via STP
 
-### 3.1 Algebraic Constraints (Hard)
+The core of Evolver lies in leveraging the **Semi-Tensor Product (STP)** to transform logical constraints into algebraic equations.
 
-These constraints are enforced by the mathematical core (`src/soul/algebra.rs`).
+For any logical constraint $L(x) = \text{True}$, we encode it into the algebraic form $L \ltimes x = \delta_n^1$. The system's dynamical equation $x_{t+1} = f(x_t, u_t)$ is constructed as:
 
-**Discriminant Invariance:**
-For any state
-$$S_t = (a_t, b_t, c_t)$$
-on the evolution trajectory, the following must hold:
-$$b_t^2 - 4a_t c_t = \Delta$$
+$$x_{t+1} = M \ltimes u_t \ltimes x_t$$
 
-**Group Closure:**
-The result of any operation
-$$S_{new} = S_{old} \circ \epsilon$$
-must remain within the Ideal Class Group
-$$Cl(\Delta)$$
+where the structural matrix $M$ is the algebraic realization of the Logical AND of all local constraints.
 
-### 3.2 Logical Constraints (Soft)
+**Theorem (Soundness):** If the structural matrix $M$ is generated through canonical STP logical transformations, then for any time $t$, as long as the evolution follows the dynamical equations, the state $x_t$ cannot violate any hard constraints.
 
-These constraints are verified by the STP engine (`src/dsl/stp_bridge.rs`).
-
-**Type Consistency:**
-The action `Define { symbol: "n", type: "Odd" }` must comply with the rules of the type system.
-
-**Causal Consistency:**
-The action `Apply { inputs: ["n"] }` requires that the symbol "n" must have been defined in a previous step.
-$$a_t \text{ is valid} \iff \text{Preconditions}(a_t) \subseteq \bigcup_{i=0}^{t-1} \text{Effects}(a_i)$$
-
-**Axiomatic Consistency:**
-The assertion `Assert { condition }` must evaluate to true under the current STP state.
-$$E_{STP}(S_t, a_t) = 0 \iff \text{STP}(S_t) \vdash a_t$$
+This implies that the system is fundamentally incapable of expressing a state that violates physical laws. Erroneous states do not exist within the algebraic structure, or they are mapped to the null space.
 
 ---
 
-## 4. Constraint Manifold & Search Dynamics
+## 3. Level 1: Search Verifiability
 
-To resolve the duality between algebraic rigour and heuristic search, we explicitly distinguish between the Search Space (where the Will travels) and the Manifold of Truth (where the Will aims to arrive).
+While STP ensures the legality of single-step evolution, it does not guarantee long-term goal achievement. This necessitates the concept of "verification."
 
-### 4.1 The Manifold of Truth (Destination)
+The system output is not a single result, but a **Proof of Will (Search Proof)**, containing:
+* Initial state $x_0$
+* Sequence of perturbations (actions) $\mathcal{U} = \{u_0, u_1, \dots, u_k\}$
+* Claimed final energy $E_{claim}$
 
-The Manifold of Truth
-$$\mathcal{M}_{truth}$$
-is the sparse subset of the class group containing seeds that materialize into logically valid paths for the specific context.
-$$\mathcal{M}_{truth}(\Delta) = \{ S \in Cl(\Delta) \mid E_{STP}(\text{Materialize}(S) \mid \text{Context}) = 0 \}$$
+### Verification Protocol
+The Verifier does not need to run complex optimization algorithms; they only need to perform a deterministic **Replay**:
 
-This is the target set. A seed
-$$S^*$$
-is considered a valid solution if and only if
-$$S^* \in \mathcal{M}_{truth}(\Delta)$$
+```rust
+fn verify(proof: Proof) -> bool {
+    let mut x = proof.initial_state;
+    for u in proof.action_sequence {
+        // STP matrix multiplication: highly deterministic, low computational cost
+        x = M * u * x; 
+    }
+    return energy(x) == proof.claimed_energy;
+}
+```
 
-### 4.2 The Search Space (Journey)
-
-The Search Space is the entire Cayley Graph
-$$\mathcal{G}(\Delta)$$
-
-During the optimization process (The Will's Walk), the system traverses states
-$$S_{temp}$$
-that generally do not belong to $\mathcal{M}_{truth}$.
-$$S_{temp} \in \mathcal{G} \setminus \mathcal{M}_{truth} \implies E_{STP}(S_{temp}) > 0$$
-
-The task of the optimizer (VAPO) is to navigate the graph to converge onto the manifold, minimizing the energy potential
-$$J(S)$$
+This asymmetric computational cost (extremely expensive to search, extremely cheap to verify) is the core value of the Evolver architecture.
 
 ---
 
-## 5. Code Mapping
+## 4. Level 2: The Limit of Will
 
-* `ClassGroupElement::compose`: Guarantees algebraic constraints (Hard).
-* `STPContext::calculate_energy`: Checks logical constraints (Soft). If violated, it returns non-zero energy, guiding VAPO to avoid that path.
-* `(Implicit)`: The `Evolver` struct initialization binds the Discriminant to the input prompt, enforcing the Contextual Binding at the root level.
+Will (Optimizer) is a heuristic searcher operating in complex topological spaces (based on v-PuNNs strategies).
+
+We must honestly state that:
+1.  Optimization problems are generally non-convex.
+2.  There exist numerous local minima.
+
+Therefore, Evolver cannot guarantee finding the global optimum where $E=0$. When the system outputs a non-zero energy state, it represents the "best fit found under limited computational resources," rather than an absolute truth.
+
+## Conclusion
+
+Evolver does not provide an "Oracle," but rather a "Mathematically Rigorous Explorer." It will not lie (L0 & L1), but it may fail (L2) 。
