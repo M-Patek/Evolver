@@ -1,73 +1,74 @@
-use crate::soul::algebra::IdealClass;
+use crate::soul::algebra::{IdealClass, Quaternion};
 
-/// TimeEvolution defines how an algebraic state evolves over the temporal dimension.
-///
-/// This trait decouples the "Proof-of-Will" (VDF) mechanism from the core state,
-/// allowing the system to run in "Fast Mode" (Identity) or "Rigorous Mode" (VDF).
+/// Defines how the Soul evolves over 'Time' or 'Search Steps'.
+/// In the Ontological Amendment, Dynamics are no longer just "squaring matrices".
+/// They are walks on the Arithmetic Lattice driven by Hecke Operators.
 pub trait TimeEvolution {
-    /// Evolve the current state to the next time step.
-    ///
-    /// # Arguments
-    /// * `current` - The state at time t.
-    ///
-    /// # Returns
-    /// The state at time t+1.
-    fn next(&self, current: &IdealClass) -> IdealClass;
-
-    /// Returns a descriptor of the dynamics (for logging/verification).
-    fn name(&self) -> &'static str;
+    fn next(&self, state: &IdealClass) -> IdealClass;
 }
 
-/// Identity Dynamics (Fast Mode).
-///
-/// In this mode, the algebraic state does not undergo complex squaring operations
-/// between logical steps. The variation in logic comes solely from the
-/// Linear Congruence Projection's index `k` (i.e., `a + k*b`).
-///
-/// Cost: O(1) Copy.
-/// Use case: Real-time generation, Code completion.
+/// Identity Dynamics: The state does not change implicitly.
+/// Used for 'fast' mode or when the Will (Optimizer) fully controls the path.
 pub struct IdentityDynamics;
 
 impl TimeEvolution for IdentityDynamics {
-    fn next(&self, current: &IdealClass) -> IdealClass {
-        // The truth remains constant; only the perspective (projection index) changes.
-        current.clone()
-    }
-
-    fn name(&self) -> &'static str {
-        "Identity (Fast)"
+    fn next(&self, state: &IdealClass) -> IdealClass {
+        state.clone()
     }
 }
 
-/// VDF Dynamics (Proof-of-Will Mode).
-///
-/// Enforces sequential computation via repeated squaring in the Class Group.
-/// This acts as a Verifiable Delay Function (VDF).
-///
-/// Cost: O(difficulty) Group Operations.
-/// Use case: Proof of Will, High-value logic verification.
+/// Hecke Dynamics: Represents the inevitable flow of causality.
+/// Instead of VDF (Squaring), we apply a deterministic Hecke Operator T_flow.
+/// This simulates the "Arrow of Time" in the non-commutative space.
+pub struct HeckeDynamics {
+    flow_operator: Quaternion,
+}
+
+impl HeckeDynamics {
+    /// Creates a new causal time flow.
+    /// The 'difficulty' parameter determines the complexity of the time operator.
+    pub fn new(difficulty: usize) -> Self {
+        // We construct a 'Time Operator' that pushes the state forward.
+        // For simplicity, we use a basic quaternion scaled by difficulty.
+        // Real implementation would find a specific generator of large norm.
+        let seed = difficulty as i64;
+        Self {
+            flow_operator: Quaternion::new(seed, 1, 0, 0),
+        }
+    }
+}
+
+impl TimeEvolution for HeckeDynamics {
+    fn next(&self, state: &IdealClass) -> IdealClass {
+        // Time is a non-commutative operator applied from the right.
+        // S(t+1) = S(t) * T_flow
+        state.apply_hecke(&self.flow_operator)
+    }
+}
+
+/// (Deprecated) VDF Dynamics kept for backward compatibility if needed,
+/// but re-implemented using Quaternion squaring (which is also non-commutative).
 pub struct VDFDynamics {
-    /// Number of squarings per time step.
-    pub difficulty: usize,
+    iterations: usize,
 }
 
 impl VDFDynamics {
-    pub fn new(difficulty: usize) -> Self {
-        Self { difficulty }
+    pub fn new(iterations: usize) -> Self {
+        Self { iterations }
     }
 }
 
 impl TimeEvolution for VDFDynamics {
-    fn next(&self, current: &IdealClass) -> IdealClass {
-        let mut state = current.clone();
-        // Force sequential work
-        for _ in 0..self.difficulty {
-            state = state.square();
+    fn next(&self, state: &IdealClass) -> IdealClass {
+        let mut current_q = state.value;
+        // Repeatedly square the quaternion to simulate VDF delay
+        for _ in 0..self.iterations {
+            current_q = current_q * current_q;
         }
-        state
-    }
-
-    fn name(&self) -> &'static str {
-        "VDF (Proof-of-Will)"
+        
+        IdealClass {
+            value: current_q,
+            discriminator: state.discriminator,
+        }
     }
 }
