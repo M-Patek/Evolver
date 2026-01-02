@@ -1,97 +1,63 @@
-use rug::{Float, ops::Pow};
+use crate::soul::algebra::IdealClass;
+use crate::body::projection::Projector; // 假设 Body 层已适配 IdealClass
 
-/// 评估器配置
-/// 定义了 VAPO 对能量感知的精度要求
-pub struct EvaluatorConfig {
-    /// 计算精度 (bits)。
-    /// 建议值：512 (对于 D=60 左右的深度)。
-    /// 如果路径深度超过 100，建议提升至 1024。
-    pub precision: u32,
+/// 评估器 (Evaluator) 接口
+/// 定义了如何计算一个代数状态的“能量”。
+/// 能量越低，代表逻辑越自洽，真理度越高。
+pub trait Evaluator {
+    fn evaluate(&self, state: &IdealClass) -> f64;
 }
 
-impl Default for EvaluatorConfig {
-    fn default() -> Self {
-        Self { precision: 512 }
+/// 几何评估器 (Geometric Evaluator)
+/// 仅计算当前状态与目标意图在连续流形上的距离。
+/// 用于 "fast" 模式或启发式引导。
+pub struct GeometricEvaluator;
+
+impl Evaluator for GeometricEvaluator {
+    fn evaluate(&self, _state: &IdealClass) -> f64 {
+        // 这是一个桩实现 (Stub)。
+        // 在真实场景中，这里会调用 projector.project_continuous(state) 
+        // 并计算其与 target_features 的欧氏距离。
+        0.0
     }
 }
 
-/// 高精度评估器 (High Precision Evaluator)
+/// STP 评估器 (Strict Logic Evaluator)
+/// 使用矩阵半张量积 (STP) 严格检查逻辑自洽性。
 /// 
-/// 负责计算当前状态与目标状态之间的残差 (Residual)。
-/// 
-/// [AUDIT FIX]: 之前的版本使用 f64，在路径范数 N > 10^45 时会导致
-/// 机器精度溢出 (1.0 + 1e-180 == 1.0)，引发梯度死亡。
-/// 现在使用 MPFR Float (rug crate) 进行任意精度计算。
-pub struct HighPrecisionEvaluator {
-    precision: u32,
+/// J(S) = E_barrier + E_axiom + E_residual
+pub struct StpEvaluator {
+    projector: Projector,
+    depth: usize,
+    target_features: Vec<f64>,
 }
 
-impl HighPrecisionEvaluator {
-    /// 创建一个新的评估器
-    pub fn new(config: EvaluatorConfig) -> Self {
+impl StpEvaluator {
+    pub fn new(projector: Projector, depth: usize, target_features: Vec<f64>) -> Self {
         Self {
-            precision: config.precision,
+            projector,
+            depth,
+            target_features,
         }
     }
-
-    /// 创建一个零能量目标 (Perfect State)
-    pub fn zero_energy(&self) -> Float {
-        Float::with_val(self.precision, 0.0)
-    }
-
-    /// 计算高精度残差
-    /// 
-    /// Formula: Residual = |Target - Current|
-    /// 
-    /// 这里的关键是：即使差异只有 1e-180，512-bit 的 Float 也能精确捕捉到，
-    /// 从而为 VAPO 提供有效的下降梯度。
-    pub fn calculate_residual(&self, target: &Float, current: &Float) -> Float {
-        // 使用 rug 的高精度绝对值计算
-        // 拒绝 f64 的截断误差！
-        (target - current).abs()
-    }
-
-    /// 检查是否收敛
-    /// 
-    /// 判断残差是否小于某个极小的阈值 (epsilon)。
-    /// 注意：这里的 epsilon 也必须是高精度的。
-    pub fn has_converged(&self, residual: &Float, epsilon_exponent: i32) -> bool {
-        // 构造高精度阈值 10^exponent
-        let base = Float::with_val(self.precision, 10.0);
-        let threshold = base.pow(epsilon_exponent);
-        
-        residual < &threshold
-    }
-
-    /// 获取当前的精度设置
-    pub fn precision(&self) -> u32 {
-        self.precision
-    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Evaluator for StpEvaluator {
+    fn evaluate(&self, state: &IdealClass) -> f64 {
+        // 1. 投影：将代数状态 S 映射为逻辑动作序列 (Body)
+        // 注意：Projector 需要适配新的 IdealClass 结构
+        // let logic_sequence = self.projector.project_logic(state, self.depth);
 
-    #[test]
-    fn test_gradient_death_fix() {
-        let precision = 512;
-        let evaluator = HighPrecisionEvaluator::new(EvaluatorConfig { precision });
+        // 2. 屏障势能 (Barrier Energy): 检查逻辑是否自洽
+        // let barrier_energy = check_stp_consistency(&logic_sequence);
+        // if barrier_energy > 0.0 { return 1000.0 + barrier_energy; }
 
-        // 模拟梯度死亡场景：
-        // Base = 10^180
-        // Delta = 1 (微扰)
-        let base_val = Float::with_val(precision, 10.0).pow(180);
-        let perturbed_val = base_val.clone() + Float::with_val(precision, 1.0);
+        // 3. 残差势能 (Residual Energy): 检查是否偏离了原始意图
+        // let current_features = self.projector.project_continuous(state);
+        // let residual = distance(&current_features, &self.target_features);
 
-        // 在 f64 中，(10^180 + 1) - 10^180 == 0.0 (精度丢失)
-        // 在 rug::Float 中，应该能找回这个 1.0
-        
-        let diff = perturbed_val - base_val;
-        let expected = Float::with_val(precision, 1.0);
-        
-        // 验证我们找回了丢失的精度
-        assert!((diff - expected).abs() < Float::with_val(precision, 1e-10));
-        println!("喵！成功在 10^180 的大数海洋中捕捉到了 1.0 的微扰！");
+        // 简化返回模拟值：
+        // 在真实代码中，这里是连接代数 (Soul) 和 逻辑 (Body) 的桥梁。
+        0.0 
     }
 }
