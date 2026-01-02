@@ -1,119 +1,92 @@
-# HYPER-TENSOR PROTOCOL (HTP): Core Protocol Specification
+# Hyper-Tensor Protocol (HTP) Specification
 
-"The Soul evolves, the Will optimizes, the Body manifests."
+**Version:** 2.3.0  
+**Layer:** Core Protocol  
 
-## Abstract
-
-This document defines the Hyper-Tensor Protocol (HTP). The protocol establishes an algebraic evolution mechanism based on the Ideal Class Group of Imaginary Quadratic Fields for the generation, verification, and materialization of logical paths.
-
-**Core Transformation:**
-The system transitions from a "continuous manifold approximation" to a rigorous Discrete Algebraic Graph Search. The system seeks a Zero-Energy State by traversing the Cayley Graph of the class group.
-
-**Trust Model:**
-HTP guarantees Algebraic Soundness (every state is a valid group element) and Computational Integrity (the path is reproducible). It shifts the paradigm from "Trusting the Model Weights" to "Verifying the Search Path."
+> "The Soul evolves, the Will optimizes, the Body manifests."
 
 ---
 
-## 1. The Soul: Discrete Algebraic State Space
+## 1. Abstract
 
-### 1.1 The Structure: Finite Abelian Group $Cl(\Delta)$
+This specification defines the **Hyper-Tensor Protocol (HTP)**, an algebraic protocol designed for the generation, verification, and materialization of logical paths.
 
-The core state space is not a continuous manifold, but a finite discrete Abelian group: the Ideal Class Group $Cl(\Delta)$.
+The core paradigm shift of HTP lies in this: we no longer seek answers within a continuous, approximate probabilistic space; instead, we perform searches within a discrete, rigorous **Algebraic Graph**.
 
-* **Discriminant:** $\Delta < 0$, $|\Delta| \approx 2^{2048}$.
-* **Elements:** Equivalence classes of binary quadratic forms $[a, b, c]$.
-* **Topology:** Discrete, massive graph structure.
-
-### 1.2 The Geometry: Cayley Graph
-
-To define "neighborhoods" and "search directions" for the Will, we explicitly construct a Cayley Graph $\mathcal{G}$.
-
-* **Vertices:** Elements of $Cl(\Delta)$.
-* **Generating Set ($\mathcal{P}$):** A public set of prime ideal classes (perturbations).
-
-$$\mathcal{P} = \{ [\mathfrak{p}_1], [\mathfrak{p}_1]^{-1}, \dots, [\mathfrak{p}_k], [\mathfrak{p}_k]^{-1} \}$$
-
-* **Metric:** The distance $d(S_1, S_2)$ is the Word Metric relative to $\mathcal{P}$.
-
-### 1.3 State Evolution Dynamics (Decoupled)
-
-We decouple the Search Dynamics (Will) from the Materialization Dynamics (Body).
-
-**Search Dynamics (The Will's Walk)**
-
-$$S_{k+1} = S_k \circ \epsilon_k$$
-
-* $S_k$: Candidate seed.
-* $\epsilon_k \in \mathcal{P}$: Perturbation chosen by VAPO.
-
-**Time Dynamics (The Observation)**
-
-$$O_0 = S$$
-$$O_{t+1} = O_t^2$$
-
-The logical path is derived from the orbit.
+### Trust Model:
+* **Prover (Generator):** Must provide a valid walking path (Trace) on a Cayley graph, proving that a zero-energy state was found through computation.
+* **Verifier:** Only needs to execute a low-cost Algebraic Replay to verify logical correctness, without needing to run expensive inference models.
 
 ---
 
-## 2. The Will: Discrete Graph Search
+## 2. The Soul: Algebraic State Space Specification
 
-### 2.1 The Optimization Objective
+### 2.1 State Definition
+The core state space $\mathcal{S}$ is defined as the ideal class group $Cl(\Delta)$ of an imaginary quadratic field $\mathbb{Q}(\sqrt{\Delta})$.
 
-The Will navigates the graph to minimize the Unified Energy Metric $J(S)$.
+* **Discriminant:** $\Delta < 0, \Delta \equiv 0, 1 \pmod 4$. A value of $|\Delta| \approx 2^{2048}$ is recommended to ensure cryptographic strength.
+* **Element Representation:** A state $S$ is uniquely represented by a reduced binary quadratic form $(a, b, c)$, satisfying $b^2 - 4ac = \Delta$.
 
-$$J(S) = E_{barrier}(\Pi(S)) + E_{residual}(\Psi(S))$$
+### 2.2 Evolution Operator
+State evolution strictly follows **Gauss Composition**.
 
-* $E_{barrier}$ (Discrete): 0.0 if Logic is Valid, >0.0 otherwise.
-* $E_{residual}$ (Continuous): Geometric guidance term.
+$$S_{next} = S_{curr} \circ \epsilon$$
 
-### 2.2 VAPO on Graphs
-
-VAPO (Valuation-Adaptive Perturbation Optimization) acts as a heuristic search agent.
-
-> **Assumption: Empirical Metric Smoothness**
-> We assume the Feature Map $\Psi$ provides enough locality information to guide the search, despite the underlying algebraic mixing. This allows VAPO to perform better than random walking, though the problem remains NP-Hard in the worst case.
+Where $\epsilon \in \mathcal{P}$, and $\mathcal{P}$ is a predefined set of generators (perturbation set). This ensures the system never enters an "illegal state."
 
 ---
 
-## 3. The Body: Topological Materialization
+## 3. The Will: Optimization and Energy Specification
 
-### 3.1 The Feature Map $\Psi$ (Continuous)
+### 3.1 Unified Energy Metric
+The optimization goal is to minimize the Hamiltonian $J(S)$, which measures the degree of "cognitive dissonance."
 
-* **Role:** Provides the "Gradient Sense" for the Will.
-* **Action:** Maps algebraic state to invariant geometric features in the Upper Half Plane $\mathbb{H}$.
+$$J(S) = \mathcal{L}(E_{obj}, C_{axioms}, \xi)$$
 
-### 3.2 The Materialization Map $\Pi$ (Discrete)
+* $E_{obj}$ (**Semantic Objective**): The distance between $\Psi_{topo}(S)$ and the target features.
+* $C_{axioms}$ (**Axiomatic Residual**): The degree of violation of the STP matrix equation $\|L(S) - R(S)\|^2$.
+* $\xi$ (**Logical Relaxation**): Permissible variables for axiomatic compromise (used to handle paradoxes).
 
-* **Role:** Generates the actual Logic/Code.
-* **Action:** Transforms the algebraic orbit into a sequence of discrete ProofActions.
+### 3.2 VAPO Protocol
+The "Will" must implement a **Valuation-Adaptive** strategy:
 
----
-
-## 4. Security & Verifiability
-
-### 4.1 Computational Asymmetry (Proof of Search)
-
-We do not claim "Information Theoretic Security" (Encryption). Instead, we provide Computational Asymmetry:
-
-* **Hardness (Prover):** Finding a path to a valid state ($E=0$) is a Preimage Attack on the Energy Function over a massive graph ($2^{1024}$ nodes). Without semantic shortcuts, this requires significant heuristic search effort.
-* **Ease (Verifier):** Verifying the path is a linear-time algebraic replay.
-
-### 4.2 The Proof Bundle
-
-The Proof Bundle acts as a certificate of the computation:
-
-$$\text{Bundle} = \{ \text{ContextHash}, S_{final}, \text{Path} = [\epsilon_1, \epsilon_2, \dots, \epsilon_k] \}$$
-
-**Security Parameter:** $\Delta$ must be large enough (e.g., 2048-bit) to prevent the computation of the full class group structure, ensuring the graph cannot be trivially mapped.
+1.  **Sensing:** Calculate the energy gradient $\nabla J$ of the current neighborhood.
+2.  **Perturbing:** Dynamically select the norm size of $\epsilon$ based on the smoothness of $\nabla J$.
+    * **High Energy Zone** $\to$ Large norm $\epsilon$ (Tunneling).
+    * **Low Energy Zone** $\to$ Small norm $\epsilon$ (Annealing).
 
 ---
 
-## 5. Conclusion
+## 4. The Body: Projection and Materialization Specification
 
-HTP v2.3 refines the security definitions:
+### 4.1 Projection Interface
+The "Body" must implement a function $\Pi$ that maps the algebraic state $S$ to logical components.
 
-* **Soul:** A node in a cryptographically large Class Group Cayley Graph.
-* **Will:** A heuristic search agent proving work via pathfinding.
-* **Body:** The rigorous projection of algebra into logic.
+$$\Pi: Cl(\Delta) \to \text{CodeBlock}^*$$
 
-We guarantee Soundness via Algebra and Effort via Search Complexity.
+This mapping must satisfy **One-wayness** and the **Avalanche Effect** to prevent the forging of algebraic states via reverse engineering.
+
+### 4.2 Proof Bundle
+A valid HTP response must contain the following three parts:
+
+```json
+{
+  "context_hash": "SHA256(Input)",
+  "algebraic_seed": "[a, b, c]",
+  "evolution_trace": ["p1_idx", "p2_idx", ...], 
+  "final_energy": 0.0
+}
+```
+
+The verifier accepts the result by replaying the seed + trace and checking if the energy is 0.
+
+---
+
+## 5. Security Statement
+
+This protocol provides **Computational Asymmetry**:
+
+* **Generation (Hard):** This is a Preimage Attack problem within a vast discrete space, which is NP-Hard.
+* **Verification (Easy):** This is a deterministic Polynomial-Time calculation (P-Time).
+
+This ensures that the generated logic is not just "seemingly correct," but is a **Computational Truth** proven by processing power.
