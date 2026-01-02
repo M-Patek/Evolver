@@ -7,7 +7,10 @@
 This document defines the Hyper-Tensor Protocol (HTP). The protocol establishes an algebraic evolution mechanism based on the Ideal Class Group of Imaginary Quadratic Fields for the generation, verification, and materialization of logical paths.
 
 **Core Transformation:**
-The system transitions from a "continuous manifold approximation" to a rigorous Discrete Algebraic Graph Search. Truth is the zero-energy state found by traversing the Cayley Graph of the class group.
+The system transitions from a "continuous manifold approximation" to a rigorous Discrete Algebraic Graph Search. The system seeks a Zero-Energy State by traversing the Cayley Graph of the class group.
+
+**Trust Model:**
+HTP guarantees Algebraic Soundness (every state is a valid group element) and Verifiability (the path is reproducible). It does not claim "Correct-by-Construction" for semantic logic; rather, it provides a rigorous search space where semantic validity is the optimization target.
 
 ---
 
@@ -34,7 +37,7 @@ $$\mathcal{P} = \{ [\mathfrak{p}_1], [\mathfrak{p}_1]^{-1}, \dots, [\mathfrak{p}
 
 ### 1.3 State Evolution Dynamics (Decoupled)
 
-To preserve the local metric structure required for optimization (Lipschitz continuity), we explicitly decouple the **Search Dynamics** from the **Time Dynamics**.
+To utilize geometric heuristics on a discrete graph, we explicitly decouple the Search Dynamics (Will) from the Materialization Dynamics (Body).
 
 **Search Dynamics (The Will's Walk)**
 The Will operates on the static Cayley Graph. It moves from neighbor to neighbor to find the optimal seed.
@@ -45,7 +48,7 @@ $$S_{k+1} = S_k \circ \epsilon_k$$
 * $\epsilon_k \in \mathcal{P}$: A perturbation (generator) chosen by the VAPO optimizer.
 
 **Time Dynamics (The Observation)**
-Once a candidate seed $S$ is selected (or evaluated), it is "unfolded" in time to generate the logical path. This is the VDF (Verifiable Delay Function) aspect.
+Once a candidate seed $S$ is selected, it is "unfolded" in time to generate the logical path.
 
 $$O_0 = S$$
 $$O_{t+1} = O_t^2$$
@@ -58,95 +61,103 @@ The logical path is derived from the orbit $O_0, O_1, \dots, O_T$.
 
 ### 2.1 The Optimization Objective: Unified Energy Metric
 
-The responsibility of the Will is to navigate the Cayley Graph to find a node $S^*$ such that the projected logical path satisfies Strict Logical Truth.
+The responsibility of the Will is to navigate the Cayley Graph to find a node $S^*$ that minimizes the Unified Energy Metric $J(S)$.
 
-To reconcile the discrete nature of logic (True/False) with the need for search guidance, we define a Unified Energy Metric $J(S)$.
+To reconcile the discrete nature of logic with the need for search guidance, we define two distinct mappings:
 
-$$J(S) = E_{barrier}(S) + E_{residual}(S)$$
+1.  **Materialization Map ($\Pi$):** $Cl(\Delta) \to \text{ProofAction}^*$ (Discrete, logical output)
+2.  **Feature Map ($\Psi$):** $Cl(\Delta) \to \mathbb{R}^k$ (Continuous, geometric embedding)
 
-1.  **The Discrete Barrier ($E_{barrier}$):**
-    This component enforces the "Correct-by-Construction" constraints.
-    * **0.0 (Valid):** The path is syntactically correct AND semantically valid (STP Energy = 0).
-    * **10.0 (Syntax Error):** The projection failed to decode into a valid abstract syntax tree (AST).
-    * **100.0 (Logical Violation):** The path implies a contradiction (e.g., $1+1=3$) detected by the STP engine.
+**The Energy Function:**
 
-2.  **The Geometric Residual ($E_{residual}$):**
-    This component provides Directional Metric Guidance for the optimizer when $E_{barrier} > 0$.
+$$J(S) = E_{barrier}(\Pi(S)) + E_{residual}(\Psi(S))$$
 
-    $$E_{residual}(S) = \beta \cdot ||\Psi(S) - \tau_{target}||^2$$
+* **The Discrete Barrier ($E_{barrier}$):** Evaluates the Materialized Path $\Pi(S)$.
+    * 0.0 (Valid): Path is syntactically correct AND semantically valid (STP Energy = 0).
+    * 10.0 (Syntax Error): Decoding failed.
+    * 100.0 (Logical Violation): Contradiction detected.
+* **The Geometric Residual ($E_{residual}$):** Evaluates the Geometric Feature $\Psi(S)$ to provide directional guidance when $E_{barrier} > 0$.
 
-    Acts as a heuristic "Slope" in the Continuous Embedding space.
+$$E_{residual}(S) = \beta \cdot ||\Psi(S) - \tau_{target}||^2$$
 
 **Optimization Goal:**
+
 $$\text{Minimize } J(S) \text{ subject to } S \in V(\mathcal{G})$$
 
-**Truth Condition:**
-$$S \text{ is True } \iff E_{barrier}(S) = 0$$
+### 2.2 VAPO on Graphs (Empirical Smoothness)
 
-### 2.2 VAPO on Graphs
+Since gradients $\nabla J$ are undefined on a discrete graph, VAPO (Valuation-Adaptive Perturbation Optimization) operates as a Geometric Heuristic Search.
 
-Since the domain is discrete and $E_{barrier}$ is a step function, Gradients $\nabla J$ are undefined. VAPO (Valuation-Adaptive Perturbation Optimization) operates as a Geometric Heuristic Search.
+**Assumption: Empirical Metric Smoothness**
+While the algebraic structure of Class Groups is chaotic (quasi-random), we rely on the statistical assumption that the Feature Map $\Psi$ is "smooth enough" relative to small-norm generators.
 
-**The "Continuous Embedding" Heuristic:**
-The efficacy of VAPO relies strictly on the Lipschitz continuity of the Projection Map $\Psi$ into a Continuous Embedding Space. Small steps in the algebraic graph must result in bounded changes in the feature space $\mathbf{F}(S)$.
+We define the Local Variation Bound ($\delta$):
 
-* **Coarse Operators (Large Norm Primes):** Edges in $\mathcal{G}$ that correspond to generators with large algebraic norms. These tend to cause larger shifts in the embedding.
-* **Fine Operators (Small Norm Primes):** Edges corresponding to small norm primes. These act as "local" adjustments.
+$$\delta = \max_{\epsilon \in \mathcal{P}_{small}} || \Psi(S) - \Psi(S \circ \epsilon) ||$$
+
+VAPO is effective if $\delta \ll ||\Psi(S_{random}) - \Psi(S'_{random})||$. 
 
 **Search Strategy:**
-1.  **Expansion:** Generate neighbors $\mathcal{N}(S_t) = \{ S_t \circ \epsilon \mid \epsilon \in \mathcal{P} \}$
-2.  **Evaluation:** Compute Unified Energy $J$ for all neighbors.
-3.  **Selection:** Move to the neighbor with the lowest energy (Greedy Hill Climbing on the Graph guided by the Embedding).
+* **Coarse Phase:** Use large-norm primes (High $\delta$) to escape local minima.
+* **Fine Phase:** Use small-norm primes (Low $\delta$) to descend the residual gradient.
+* **Selection:** Move to the neighbor with the lowest energy (Greedy Hill Climbing on $\mathcal{G}$ guided by $\Psi$).
 
 ---
 
 ## 3. The Body: Topological Materialization
 
-### 3.1 The Projection Map $\Psi$
+This section defines the two critical maps used by the Soul and Will.
 
-> ⚠️ **DEPRECATION NOTICE (v2.1)**
-> The Linear Congruence Projection (LCP) described below represents the idealized theoretical model. In practice, it suffers from "Reduction Chaos".
+### 3.1 The Feature Map $\Psi$ (Continuous)
 
-The current active implementation utilizes **Canonical Modular Projection**, which maps the algebraic state to invariant geometric features ($\tau$-features) before discretization.
-
-**Canonical Modular Projection:**
-To ensure Lipschitz continuity and ensure a smooth heuristic landscape, we project the geometric invariants of the ideal class in the Upper Half Plane $\mathbb{H}$.
+Role: Provides the "Gradient Sense" for the Will.
+We utilize the Canonical Modular Projection, which maps the algebraic state to invariant geometric features in the Upper Half Plane $\mathbb{H}$.
 
 **The Modular Point:**
 For a reduced form $[a, b, c]$, the corresponding point in $\mathbb{H}$ is:
 
 $$\tau = \frac{-b + i\sqrt{|\Delta|}}{2a} = x + iy$$
 
-**The Continuous Feature Embedding:**
-$$\mathbf{F}(S) = \begin{bmatrix} \cos(2\pi x) \\ \sin(2\pi x) \\ \log(y) \end{bmatrix}$$
+**The Embedding $\Psi(S)$:**
 
-This embedding $\mathbf{F}(S)$ allows the discrete optimizer to sense "direction" without requiring differentiability.
+$$\Psi(S) = \begin{bmatrix} \cos(2\pi x) \\ \sin(2\pi x) \\ \log(y) \end{bmatrix}$$
 
-### 3.2 Semantic Adapter
-Converts numerical sequences into ProofAction. This remains a deterministic mapping.
+### 3.2 The Materialization Map $\Pi$ (Discrete)
+
+Role: Generates the actual Logic/Code for the Body.
+The Materialization Map $\Pi$ transforms the algebraic orbit into a sequence of discrete actions.
+
+1.  **Orbit Generation:** Generate sequence $O_0, O_1, \dots$ via $O_{t+1} = O_t^2$.
+2.  **Canonical Modulo:** For each $O_t = [a_t, b_t, c_t]$, compute raw digits $d_t = (a_t \oplus b_t) \pmod M$.
+3.  **Semantic Adapter:** Map digits $d_t$ to ProofAction (e.g., Assume, Deduce, Reword).
+
+$$\Pi(S) = \text{Adapter}(\text{Orbit}(S))$$
 
 ---
 
 ## 4. Security & Verifiability
 
 ### 4.1 Time Security (Hidden Path)
+
 Security relies on the hardness of the Shortest Path Problem (or DLP) in the huge Cayley Graph of $Cl(\Delta)$. Finding the specific sequence of generators (the path) that connects $S_0$ to $S_{final}$ is computationally infeasible without the history.
 
 ### 4.2 Proof of Will
+
 The Proof Bundle is the Path Record:
 
 $$\text{Bundle} = \{ \text{ContextHash}, S_{final}, \text{Path} = [\epsilon_1, \epsilon_2, \dots, \epsilon_k] \}$$
 
 Verification involves replaying the walk on the graph:
+
 $$S_0 \xrightarrow{\epsilon_1} S_1 \dots \xrightarrow{\epsilon_k} S_{final}$$
 
 ---
 
 ## 5. Conclusion
 
-HTP is re-specified as:
-* **Soul:** A node in the Class Group Cayley Graph.
-* **Will:** An agent performing heuristic search on this graph utilizing the metric continuity of the Modular Projection.
-* **Body:** The discrete quantization of the modular features.
+HTP v2.2 redefines the relationship between algebra and logic:
+* **Soul:** A node in the Class Group Cayley Graph ($S$).
+* **Will:** An agent performing heuristic search guided by the Feature Map $\Psi$.
+* **Body:** The Materialization $\Pi$ of the algebraic orbit into rigorous logic.
 
-No gradients, no hallucinations, just rigorous discrete algebra guided by geometry.
+We replace the claim of "guaranteed continuity" with "statistical smoothness," providing a realistic yet rigorous foundation for Algebraic Logic Generation.
