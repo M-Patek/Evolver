@@ -1,5 +1,5 @@
 pub mod adapter;
 pub mod decoder;
-pub mod projection;
-pub mod topology;
 pub mod navigator;
+pub mod topology;
+pub use topology::project_state_to_digits;
