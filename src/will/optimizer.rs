@@ -1,15 +1,16 @@
 use crate::soul::algebra::IdealClass;
 use crate::will::evaluator::Evaluator;
-use crate::will::perturber::Perturber;
 use crate::will::tracer::OptimizationTrace;
+use crate::will::perturber::Perturber;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
-/// VAPO: Valuation-Adaptive Perturbation Optimization.
-/// 
-/// 现在它是一个“有记忆”的搜索者，会生成可验证的 Trace。
+/// 软屏障能量：当遇到代数错误时，不Crash，而是返回这个能量值
+const SOFT_BARRIER_ENERGY: f64 = 1.0e9;
+
 pub struct VapoOptimizer {
     evaluator: Box<dyn Evaluator>,
     max_steps: usize,
-    perturbation_count: usize,
 }
 
 impl VapoOptimizer {
@@ -17,79 +18,66 @@ impl VapoOptimizer {
         Self {
             evaluator,
             max_steps,
-            perturbation_count: 32,
         }
     }
 
-    /// 执行可验证的搜索 (Search with Proof)
-    /// 
-    /// 返回:
-    /// 1. 最优状态 (用于生成最终逻辑)
-    /// 2. 优化轨迹 (用于生成 Proof Bundle)
-    pub fn search(&self, start_seed: &IdealClass) -> (IdealClass, OptimizationTrace) {
-        let mut current_state = start_seed.clone();
+    /// 执行 VAPO 搜索
+    /// 返回 (最优状态, 搜索轨迹)
+    pub fn search(&self, initial_state: &IdealClass) -> (IdealClass, OptimizationTrace) {
+        let mut current_state = initial_state.clone();
         let mut current_energy = self.evaluator.evaluate(&current_state);
         
-        // 初始化 Trace
-        let mut trace = OptimizationTrace::new(start_seed.clone());
+        let discriminant = initial_state.discriminant();
+        let mut trace = OptimizationTrace::new(initial_state.clone(), "unknown_context".to_string());
+        trace.finalize(current_energy); // Init
 
-        // 0. 如果初始状态即完美
-        if current_energy.abs() < 1e-6 {
-            trace.finalize(current_energy);
-            return (current_state, trace);
-        }
+        // 初始化扰动器 (Generators)
+        // 假设 k=10 (perturbation count)
+        let perturber = Perturber::new(&discriminant, 10);
+        let generators = perturber.get_generators();
 
-        // 1. 初始化扰动器
-        let discriminant = start_seed.discriminant();
-        let perturber = Perturber::new(&discriminant, self.perturbation_count);
+        let mut rng = thread_rng();
 
-        // 2. 离散梯度下降
         for _step in 0..self.max_steps {
-            // 这里 VAPO 需要做一个权衡：
-            // 我们在寻找最优解的过程中会尝试很多路径，
-            // 但 Trace 只记录 **最终被采纳** 的那条有效路径。
-            // 这是一个 "贪婪路径" 的记录。
-            
-            // A. Generate Neighbors & Select Best
-            // 这是一个局部搜索，我们要在所有邻居中选最好的一个跳过去
-            
-            let mut best_neighbor = None;
-            let mut best_perturbation = None;
-            let mut min_local_energy = current_energy;
-
-            // 尝试所有生成元 (这是一个简单的 Steepest Descent)
-            // 也可以用随机采样 (Stochastic Hill Climbing)
-            for _ in 0..10 { // 采样 10 次作为示例
-                 let (candidate, perturbation) = perturber.perturb_with_source(&current_state);
-                 let energy = self.evaluator.evaluate(&candidate);
-                 
-                 if energy < min_local_energy {
-                     min_local_energy = energy;
-                     best_neighbor = Some(candidate);
-                     best_perturbation = Some(perturbation);
-                 }
+            // 1. 终止条件
+            if current_energy < 1e-6 {
+                break;
             }
 
-            // B. Transition & Record
-            if let (Some(next_state), Some(op)) = (best_neighbor, best_perturbation) {
-                // 只有真正移动了，才记录进 Trace
-                trace.record_step(op);
-                
-                current_state = next_state;
-                current_energy = min_local_energy;
+            // 2. 邻域采样 (Sampling Neighborhood)
+            // 尝试随机选取一个生成元进行移动
+            if let Some(perturbation) = generators.choose(&mut rng) {
+                // 3. 试探性移动 (Trial Move)
+                // [Robustness] 这里使用了 Result 处理，捕获任何代数异常
+                let trial_result = current_state.compose(perturbation);
 
-                // Found Truth?
-                if current_energy.abs() < 1e-6 {
-                    break;
+                match trial_result {
+                    Ok(trial_state) => {
+                        let trial_energy = self.evaluator.evaluate(&trial_state);
+
+                        // 4. 贪婪接受准则 (Greedy Acceptance)
+                        // 实际 VAPO 可能会用 Metropolis，这里简化为贪婪
+                        if trial_energy < current_energy {
+                            current_state = trial_state;
+                            current_energy = trial_energy;
+                            
+                            // 记录到 Trace
+                            trace.record_step(perturbation.clone());
+                            trace.finalize(current_energy);
+                        }
+                    },
+                    Err(e) => {
+                        // [Soft Barrier Logic]
+                        // 遇到代数错误（比如宇宙不匹配，虽然这里不太可能因为 generators 都是合法的），
+                        // 我们将其视为撞到了“高能量墙”。
+                        // 不做任何状态更新，相当于这一步被 Reject 了。
+                        eprintln!("VAPO hit a barrier: {}. Retrying...", e);
+                        // 可以在这里增加某种惩罚机制，或者调整 temperature
+                    }
                 }
-            } else {
-                // Local Optima reached (or bad luck sampling)
-                // 在更复杂的实现中，这里会触发 Metropolis 准则接受坏解
-                // 或者增大扰动半径 (Valuation Adaptation)
             }
         }
 
-        trace.finalize(current_energy);
         (current_state, trace)
     }
 }
