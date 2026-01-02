@@ -1,5 +1,6 @@
 # Evolver: A Formally Verifiable Evolutionary Solver
-> "Empower mathematical models with an evolutionary will."
+
+"Empower mathematical models with an evolutionary will."
 
 Evolver is a universal system evolution framework based on **Semi-Tensor Product (STP)**. It models complex system dynamics as rigorous algebraic structures and utilizes valuation-adaptive perturbation algorithms to find optimal evolution paths within topological spaces.
 
@@ -17,10 +18,11 @@ Evolver decouples systems into three orthogonal dimensions:
 * **Will (Intent):** Defines the direction of evolution. Through **Valuation-adaptive Perturbation (v-PuNNs)**, it conducts purposeful exploration within the solution space.
 
 ### 2. Trust Model
-We do not promise "Correct-by-Construction"; instead, we provide a layered trust model:
+We do not promise "Correct-by-Construction" for semantic logic. Instead, we provide a rigorous **Algebraic Trust Model**:
 
-* **Soundness:** Every step of the system's evolution strictly follows predefined algebraic laws (no illegal states can occur).
-* **Verifiability:** The system’s evolutionary path generates a cryptographically secure **Trace**, allowing third parties to verify the authenticity of the results at a low cost.
+* **Algebraic Soundness:** Every step of the system's evolution strictly follows predefined group laws. The system is guaranteed to remain in a valid algebraic state (an element of $Cl(\Delta)$), ensuring no structural corruption occurs.
+* **Verifiability:** The system’s evolutionary path generates a cryptographically secure **Trace**. Third parties can mathematically verify that the result was produced by a valid walk on the **Cayley Graph**, not hallucinated.
+* **Verified-by-Search:** Semantic correctness (Truth) is the objective of the optimization process ($E \to 0$), not an intrinsic property of the generation mechanism.
 
 ---
 
@@ -41,6 +43,7 @@ cargo build --release
 ```
 
 ### Example: Defining a Simple Boolean Network
+
 ```rust
 // Define state space (Body)
 let topology = Topology::new(2); // 2-node network
@@ -69,15 +72,16 @@ match result {
 ## Theoretical Foundations
 The core engine of Evolver is built upon the following mathematical theories:
 
-1.  **Semi-Tensor Product of Matrices:** Enables operations between matrices of different dimensions, unifying logic and algebra.
-2.  **Valuation-Adaptive Perturbation:** An adaptive search strategy based on the geometric features of the energy landscape.
-3.  **Topological Dynamics:** Dynamical systems defined on manifolds or graph structures.
+* **Semi-Tensor Product of Matrices:** Enables operations between matrices of different dimensions, unifying logic and algebra.
+* **Valuation-Adaptive Perturbation:** An adaptive search strategy based on the geometric features of the energy landscape.
+* **Topological Dynamics:** Dynamical systems defined on manifolds or graph structures.
 
 For detailed mathematical derivations, please refer to the internal technical documentation in the `theory/` directory.
 
 ---
 
 ## Copyright & License
-**M-Patek PROPRIETARY LICENSE** Copyright © 2025 M-Patek.
+**M-Patek PROPRIETARY LICENSE**
+Copyright © 2025 M-Patek.
 
 This project is **Proprietary Software**. Unauthorized copying, distribution, modification, or commercial use of any part of this software without explicit written permission from the copyright owner is strictly prohibited. This software contains legally protected trade secrets.
