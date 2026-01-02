@@ -1,80 +1,82 @@
-use crate::soul::algebra::IdealClass;
+use crate::soul::algebra::{IdealClass, Quaternion};
 use crate::will::evaluator::Evaluator;
-use crate::will::tracer::OptimizationTrace;
-use crate::will::perturber::Perturber;
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use crate::will::perturber::{Perturber, HeckePerturber};
+use crate::will::tracer::Trace;
 
-/// 软屏障能量：当遇到代数错误时，不Crash，而是返回这个能量值
-const SOFT_BARRIER_ENERGY: f64 = 1.0e9;
-
+/// VAPO 优化器 (Graph Walker 版)
+/// 
+/// 在 Ramanujan 图上执行估值自适应扰动优化。
+/// 由于新架构中使用了定四元数算术格，图具有最优的谱隙 (Spectral Gap)。
+/// 这意味着随机游走或贪婪搜索能以极快的速度混合，避免陷入局部最优。
 pub struct VapoOptimizer {
     evaluator: Box<dyn Evaluator>,
+    perturber: Box<dyn Perturber>,
     max_steps: usize,
 }
 
 impl VapoOptimizer {
+    /// 创建一个新的优化器实例
     pub fn new(evaluator: Box<dyn Evaluator>, max_steps: usize) -> Self {
         Self {
             evaluator,
+            perturber: Box::new(HeckePerturber::new()), // 默认使用 Hecke 扰动
             max_steps,
         }
     }
 
-    /// 执行 VAPO 搜索
-    /// 返回 (最优状态, 搜索轨迹)
-    pub fn search(&self, initial_state: &IdealClass) -> (IdealClass, OptimizationTrace) {
-        let mut current_state = initial_state.clone();
+    /// 执行进化搜索
+    /// 输入种子状态，返回能量最低的状态及其因果路径 (Trace)。
+    pub fn search(&self, seed: &IdealClass) -> (IdealClass, Trace) {
+        let mut current_state = seed.clone();
         let mut current_energy = self.evaluator.evaluate(&current_state);
-        
-        let discriminant = initial_state.discriminant();
-        let mut trace = OptimizationTrace::new(initial_state.clone(), "unknown_context".to_string());
-        trace.finalize(current_energy); // Init
+        let mut trace = Trace::new();
 
-        // 初始化扰动器 (Generators)
-        // 假设 k=10 (perturbation count)
-        let perturber = Perturber::new(&discriminant, 10);
-        let generators = perturber.get_generators();
+        // 初始记录
+        trace.record(Quaternion::identity(), current_energy);
 
-        let mut rng = thread_rng();
-
-        for _step in 0..self.max_steps {
-            // 1. 终止条件
-            if current_energy < 1e-6 {
+        for step in 0..self.max_steps {
+            // 1. 如果能量为 0，真理已找到，立即停止。
+            if current_energy <= 1e-6 {
+                println!("喵！在第 {} 步找到了真理 (Energy=0)！", step);
                 break;
             }
 
-            // 2. 邻域采样 (Sampling Neighborhood)
-            // 尝试随机选取一个生成元进行移动
-            if let Some(perturbation) = generators.choose(&mut rng) {
-                // 3. 试探性移动 (Trial Move)
-                // [Robustness] 这里使用了 Result 处理，捕获任何代数异常
-                let trial_result = current_state.compose(perturbation);
+            // 2. 获取所有可能的因果移动 (Hecke Neighbors)
+            let moves = self.perturber.get_moves();
+            
+            // 3. 贪婪评估 (Look-ahead 1 step)
+            // 在 Ramanujan 图上，邻域包含了足够的信息来指导下降。
+            let mut best_move = Quaternion::identity();
+            let mut best_energy = f64::MAX;
+            let mut found_better = false;
 
-                match trial_result {
-                    Ok(trial_state) => {
-                        let trial_energy = self.evaluator.evaluate(&trial_state);
+            for mv in &moves {
+                // S_next = S_curr * Operator
+                let next_state = current_state.apply_hecke(mv);
+                let energy = self.evaluator.evaluate(&next_state);
 
-                        // 4. 贪婪接受准则 (Greedy Acceptance)
-                        // 实际 VAPO 可能会用 Metropolis，这里简化为贪婪
-                        if trial_energy < current_energy {
-                            current_state = trial_state;
-                            current_energy = trial_energy;
-                            
-                            // 记录到 Trace
-                            trace.record_step(perturbation.clone());
-                            trace.finalize(current_energy);
-                        }
-                    },
-                    Err(e) => {
-                        // [Soft Barrier Logic]
-                        // 遇到代数错误（比如宇宙不匹配，虽然这里不太可能因为 generators 都是合法的），
-                        // 我们将其视为撞到了“高能量墙”。
-                        // 不做任何状态更新，相当于这一步被 Reject 了。
-                        eprintln!("VAPO hit a barrier: {}. Retrying...", e);
-                        // 可以在这里增加某种惩罚机制，或者调整 temperature
-                    }
+                if energy < best_energy {
+                    best_energy = energy;
+                    best_move = *mv;
+                    found_better = true;
                 }
+            }
+
+            // 4. 状态转移决策
+            // 这里使用了简单的最速下降法 (Steepest Descent)。
+            // 在更复杂的版本中，可以引入 Metropolis-Hastings 准则来允许以一定概率接受坏状态（热涨落）。
+            if found_better && best_energy < current_energy {
+                current_state = current_state.apply_hecke(&best_move);
+                current_energy = best_energy;
+                
+                // 记录因果算子
+                trace.record(best_move, current_energy);
+            } else {
+                // 如果陷入局部最优 (虽然在 Ramanujan 图上很少见)，
+                // 我们可以选择随机跳跃或者通过 "Identity" 保持不动并终止。
+                // 这里为了鲁棒性，我们尝试一个随机扰动来打破僵局。
+                // (简化处理：直接停止或继续搜索)
+                // println!("陷入局部最优，能量: {}", current_energy);
             }
         }
 
