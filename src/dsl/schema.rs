@@ -1,92 +1,70 @@
 // src/dsl/schema.rs
-// 单一真理源 (SSOT): 定义系统中通用的数据结构和逻辑类型
+
+/// The schema definition for the Evolver Domain Specific Language (DSL).
+/// Defines the core structures for Logic Matrices and Constraints.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-// ==========================================
-// [New] 核心逻辑类型定义 (修复类型流离失所)
-// ==========================================
+/// Represents the algebraic logic matrix operations.
+/// In Evolver, logic is treated as continuous energy functions.
+pub struct LogicMatrix;
 
-/// 逻辑类型枚举
-/// 提升为全局枚举，确保 Adapter 和 STP Bridge 对类型的理解一致
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LogicType {
-    Even,
-    Odd,
-    Prime,
-    Integer,
-    Unknown, // 用于处理熵不足或解析失败的情况
+impl LogicMatrix {
+    /// Calculates the energy penalty for logical implication A -> B (A implies B).
+    ///
+    /// Logic: A -> B is equivalent to !A or B.
+    /// In Soft Logic Energy terms:
+    /// - If A is True (1.0) and B is False (0.0), this is a VIOLATION. Energy should be HIGH.
+    /// - If A is False (0.0), the statement is "vacuously true". Energy should be LOW.
+    /// - If A is True and B is True, the statement is true. Energy should be LOW.
+    ///
+    /// Formula: Penalty = P(A) * (1 - P(B)) * ScalingFactor
+    pub fn implies_energy(prob_a: f64, prob_b: f64) -> f64 {
+        // Scaling factor of 10.0 provides a steeper gradient for the VAPO optimizer
+        // to detect violations more easily.
+        prob_a * (1.0 - prob_b) * 10.0
+    }
 }
 
-/// 统一的证明动作 (Proof Action)
-/// 融合了 Adapter 的生成能力和 Bridge 的执行需求
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ProofAction {
-    /// 定义语义: symbol 绑定到 specific LogicType
-    Define { 
-        symbol: String, 
-        value_type: LogicType // 使用强类型，而非 String
-    },
-    
-    /// 变换语义: 对 target 应用 rule
-    Transform { 
-        target: String, 
-        rule: String 
-    },
-    
-    /// 断言语义: 检查条件
-    Assert { 
-        condition: String 
-    },
-    
-    /// 空操作
-    NoOp,
-}
-
-/// 逻辑值 (用于 STP 计算引擎)
-#[derive(Debug, Clone, PartialEq)]
-pub enum LogicValue {
-    Scalar(f64),
-    Vector(Vec<f64>), // 对应 STP 的向量表示
-}
-
-// ==========================================
-// 原有的 ProofBundle 和 Model 定义 (保持兼容)
-// ==========================================
-
-/// 生成元规格说明
+/// Basic predicates that can be asserted on a variable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeneratorSpec {
-    pub algorithm_version: String,
-    pub count: usize,
-    pub max_norm: Option<u64>,
+pub enum Predicate {
+    IsOdd,
+    IsEven,
+    IsPrime,
+    IsPositive,
+    // Future expansion: relational predicates like GreaterThan(f64)
 }
 
-/// 意志证明包 (Proof of Will Bundle)
+/// Strategies for aggregating energy across a collection (for Quantifiers).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProofBundle {
-    pub context_hash: String,
-    pub discriminant_hex: String,
-    pub start_seed_a: String,
-    pub final_state_a: String,
-    pub generator_spec: GeneratorSpec,
-    pub perturbation_trace: Vec<usize>,
-    pub logic_path: Vec<String>,
-    pub energy: f64,
+pub enum AggregationStrategy {
+    /// Strict Summation: Any violation adds to the total energy.
+    /// Good for ensuring *absolute* compliance of all elements.
+    Sum,
+    
+    /// LogSumExp (Softmax): The energy is dominated by the worst offender.
+    /// Good for gradient-based guidance, directing focus to the biggest error first.
+    LogSumExp,
 }
 
-// (以下是 EvolutionModel 相关定义，保持原样以支持完整性)
+/// The core Constraint enum defining all possible logical rules in the DSL.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvolutionModel {
-    pub name: String,
-    pub spaces: HashMap<String, SpaceDef>,
-    // ... 其他字段可根据需求扩展，这里保留最简结构以通过编译
-}
+pub enum Constraint {
+    /// Basic assertion: "Variable X must satisfy Predicate P"
+    /// Example: Assert(IsOdd, "x")
+    Assert(Predicate, String),
+    
+    /// Logical Implication: "If A is true, then B must be true"
+    /// Example: AssertImplies("is_raining", "is_cloudy")
+    AssertImplies(String, String),
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SpaceDef {
-    pub name: String,
-    pub type_: String,
-    pub dim: usize, 
+    /// Universal Quantifier (The Aggregator): "For all x in Collection, P(x) is true"
+    /// This "unrolls" the loop into a single energy value.
+    /// Example: AssertForAll { collection: "SmallPrimes", predicate: IsOdd, strategy: Sum }
+    AssertForAll {
+        collection: String, // ID of the collection in the context
+        predicate: Predicate,
+        strategy: AggregationStrategy,
+    },
 }
