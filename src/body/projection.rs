@@ -1,88 +1,79 @@
-use rug::{Integer, Float};
-use rug::float::Constant;
-use crate::soul::algebra::ClassGroupElement; // 假设这是代数结构的定义位置
+use crate::soul::algebra::IdealClass;
+use sha2::{Digest, Sha256};
 
-/// 投影器配置
-pub struct ProjectionConfig {
-    pub precision: u32,
+/// 投影仪 (Projector)
+/// 负责将抽象的代数状态（Soul）“显化”为可观测的特征（Body）。
+///
+/// 这里实现了“双重投影架构” (Dual Projection Architecture)：
+/// 1. 连续投影 (Continuous): 用于优化器的启发式引导 (Lipschitz 连续)。
+/// 2. 精确投影 (Exact): 用于生成最终的逻辑路径 (离散且混沌)。
+#[derive(Debug, Clone)]
+pub struct Projector {
+    seed_discriminator: u64,
 }
 
-/// 拓扑投影器 (Topological Projector)
-/// 
-/// 负责将离散的代数状态 (Algebraic State) 投影到连续的几何流形 (Manifold)。
-/// VAPO 依赖这个投影产生的“地形”来寻找方向。
-pub struct TopologicalProjector {
-    precision: u32,
-}
-
-impl TopologicalProjector {
-    pub fn new(config: ProjectionConfig) -> Self {
-        Self {
-            precision: config.precision,
-        }
+impl Projector {
+    pub fn new(seed_discriminator: u64) -> Self {
+        Self { seed_discriminator }
     }
 
-    /// 周期性特征投影 (Periodic Feature Projection)
-    /// 
-    /// [AUDIT FIX]: 修复了大数求三角函数的随机噪声问题。
-    /// 
-    /// 原理：
-    /// 如果直接计算 sin(Norm)，当 Norm ~ 10^180 时，结果完全取决于浮点数
-    /// 末尾的垃圾位，等同于随机数。
-    /// 
-    /// 修正逻辑：
-    /// 1. 在代数域 (Integer Domain) 进行模归约： reduced = norm % modulus
-    /// 2. 在几何域 (Real Domain) 进行映射： phase = reduced / modulus * 2pi
-    /// 3. 计算 sin(phase)
-    /// 
-    /// 这样保证了 Lipschiz 连续性，让 VAPO 即使在深空也能感知到平滑的坡度。
-    pub fn project_periodic(&self, norm: &Integer, modulus: &Integer) -> Float {
-        // Step 1: 代数域归约 (Exact Reduction)
-        // 这是在纯整数算术中完成的，没有任何精度损失。
-        let reduced = norm.clone() % modulus;
+    /// 连续投影 (Psi_topo): S -> R^n
+    /// 将四元数状态映射到连续的特征向量上。
+    ///
+    /// [数学原理]
+    /// 我们将四元数 q = a + bi + cj + dk 视为 R^4 空间中的向量。
+    /// 为了消除幅度（路径长度）的影响，仅保留方向信息，我们将其投影到单位超球面 S^3 上。
+    /// v = q / |q|
+    /// 这样的映射满足 Lipschitz 连续性：状态的微小旋转导致特征的微小变化。
+    pub fn project_continuous(&self, state: &IdealClass) -> Vec<f64> {
+        let q = state.value;
         
-        // Step 2: 转换到几何域 (Safe Float Conversion)
-        // 此时 reduced < modulus，通常 modulus 是预设的常数或相对较小的数，
-        // 转换为 Float 是安全的。
-        let f_reduced = Float::with_val(self.precision, reduced);
-        let f_modulus = Float::with_val(self.precision, modulus);
-        let pi = Float::with_val(self.precision, Constant::Pi);
-        
-        // Step 3: 计算相位 (Phase Calculation)
-        // phase = (reduced / modulus) * 2 * pi
-        let phase = (f_reduced / f_modulus) * 2.0 * pi;
-        
-        // Step 4: 计算正弦值
-        phase.sin()
-    }
+        // 转换为浮点数
+        let vecRaw = vec![
+            q.a as f64,
+            q.b as f64,
+            q.c as f64,
+            q.d as f64,
+        ];
 
-    /// 对数特征投影 (Logarithmic Feature Projection)
-    /// 
-    /// 用于感知数量级的变化。
-    /// 同样需要高精度，以捕捉 log(10^180 + delta) - log(10^180) 的微小差异。
-    pub fn project_log_norm(&self, norm: &Integer) -> Float {
-        // 将巨大的 Integer 转换为高精度 Float
-        let f_norm = Float::with_val(self.precision, norm);
-        
-        // 计算自然对数
-        f_norm.ln()
-    }
-    
-    /// 综合投影 (Composite Projection)
-    /// 
-    /// 将多个特征组合成一个高维特征向量。
-    pub fn project(&self, element: &ClassGroupElement, modulus_pool: &[Integer]) -> Vec<Float> {
-        let norm = &element.norm; // 假设 element 包含一个巨大的理想范数
-        let mut features = Vec::new();
+        // 计算欧几里得范数 (L2 Norm)
+        let norm_sq: f64 = vecRaw.iter().map(|x| x * x).sum();
+        let norm = norm_sq.sqrt();
 
-        // 1. 添加对数特征 (感知距离)
-        features.push(self.project_log_norm(norm));
-
-        // 2. 添加周期性特征 (感知方向/角度)
-        for modulus in modulus_pool {
-            features.push(self.project_periodic(norm, modulus));
+        // 归一化投影 (避免除以零)
+        if norm < 1e-9 {
+            return vec![0.0; 4];
         }
 
-        features
+        vecRaw.iter().map(|x| x / norm).collect()
+    }
+
+    /// 精确投影 (Psi_exact): S -> Z_p
+    /// 将四元数状态坍缩为一个确定性的、混沌的离散值。
+    /// 用于生成 ProofAction 或验证 Hash。
+    ///
+    /// [因果敏感性]
+    /// 由于 state.value 是路径上所有算子的有序乘积，
+    /// 这里的哈希值实际上是对整个因果链的数字签名。
+    pub fn project_exact(&self, state: &IdealClass, time_step: u64) -> u64 {
+        let mut hasher = Sha256::new();
+        
+        // 输入系统参数
+        hasher.update(self.seed_discriminator.to_be_bytes());
+        
+        // 输入时间步 (区分同一状态在不同时刻的观测)
+        hasher.update(time_step.to_be_bytes());
+        
+        // 输入四元数完整状态 (a, b, c, d)
+        // 这里的微小差异会导致输出的雪崩效应
+        hasher.update(state.value.a.to_be_bytes());
+        hasher.update(state.value.b.to_be_bytes());
+        hasher.update(state.value.c.to_be_bytes());
+        hasher.update(state.value.d.to_be_bytes());
+
+        let result = hasher.finalize();
+
+        // 取前8个字节作为 u64 输出
+        u64::from_be_bytes(result[0..8].try_into().unwrap_or([0; 8]))
     }
 }
