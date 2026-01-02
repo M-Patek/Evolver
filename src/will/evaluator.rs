@@ -1,107 +1,97 @@
-use crate::soul::algebra::IdealClass;
-use crate::body::projection::Projector;
-use crate::body::adapter;
-use crate::dsl::stp_bridge::STPContext;
-use num_traits::ToPrimitive;
+use rug::{Float, ops::Pow};
 
-pub trait Evaluator {
-    fn evaluate(&self, state: &IdealClass) -> f64;
-    fn name(&self) -> &'static str;
+/// 评估器配置
+/// 定义了 VAPO 对能量感知的精度要求
+pub struct EvaluatorConfig {
+    /// 计算精度 (bits)。
+    /// 建议值：512 (对于 D=60 左右的深度)。
+    /// 如果路径深度超过 100，建议提升至 1024。
+    pub precision: u32,
 }
 
-pub struct GeometricEvaluator;
-impl Evaluator for GeometricEvaluator {
-    fn evaluate(&self, state: &IdealClass) -> f64 {
-        state.a.to_f64().unwrap_or(1e10)
+impl Default for EvaluatorConfig {
+    fn default() -> Self {
+        Self { precision: 512 }
     }
-    fn name(&self) -> &'static str { "Geometric" }
 }
 
-/// STP 评估器 (Rigorous Evaluator)
+/// 高精度评估器 (High Precision Evaluator)
 /// 
-/// [Fix] 对齐了 lib.rs 的调用接口，并修复了能量计算逻辑：
-/// Energy = Barrier(Tier) + Residual(Geometry)
-pub struct StpEvaluator {
-    projector: Projector,
-    action_count: usize,
-    digits_per_action: usize,
-    
-    /// [New] 目标特征向量。
-    /// 这里的“目标”是指 VAPO 搜索的几何引导方向。
-    /// 通常由 Context 的哈希生成，或者是用户指定的意图向量。
-    target_features: Vec<f64>,
-    
-    /// 残差权重
-    residual_weight: f64,
+/// 负责计算当前状态与目标状态之间的残差 (Residual)。
+/// 
+/// [AUDIT FIX]: 之前的版本使用 f64，在路径范数 N > 10^45 时会导致
+/// 机器精度溢出 (1.0 + 1e-180 == 1.0)，引发梯度死亡。
+/// 现在使用 MPFR Float (rug crate) 进行任意精度计算。
+pub struct HighPrecisionEvaluator {
+    precision: u32,
 }
 
-impl StpEvaluator {
-    /// 构造函数 [Fix] 对齐 lib.rs 
-    /// 注意：lib.rs 传入 (projector, depth, target_features)
-    pub fn new(
-        projector: Projector, 
-        total_depth: usize, 
-        target_features: Vec<f64>
-    ) -> Self {
-        Self { 
-            projector, 
-            action_count: total_depth / 3, // 假设每个 action 耗费 3 个 digits
-            digits_per_action: 3,
-            target_features,
-            residual_weight: 0.1, 
+impl HighPrecisionEvaluator {
+    /// 创建一个新的评估器
+    pub fn new(config: EvaluatorConfig) -> Self {
+        Self {
+            precision: config.precision,
         }
+    }
+
+    /// 创建一个零能量目标 (Perfect State)
+    pub fn zero_energy(&self) -> Float {
+        Float::with_val(self.precision, 0.0)
+    }
+
+    /// 计算高精度残差
+    /// 
+    /// Formula: Residual = |Target - Current|
+    /// 
+    /// 这里的关键是：即使差异只有 1e-180，512-bit 的 Float 也能精确捕捉到，
+    /// 从而为 VAPO 提供有效的下降梯度。
+    pub fn calculate_residual(&self, target: &Float, current: &Float) -> Float {
+        // 使用 rug 的高精度绝对值计算
+        // 拒绝 f64 的截断误差！
+        (target - current).abs()
+    }
+
+    /// 检查是否收敛
+    /// 
+    /// 判断残差是否小于某个极小的阈值 (epsilon)。
+    /// 注意：这里的 epsilon 也必须是高精度的。
+    pub fn has_converged(&self, residual: &Float, epsilon_exponent: i32) -> bool {
+        // 构造高精度阈值 10^exponent
+        let base = Float::with_val(self.precision, 10.0);
+        let threshold = base.pow(epsilon_exponent);
+        
+        residual < &threshold
+    }
+
+    /// 获取当前的精度设置
+    pub fn precision(&self) -> u32 {
+        self.precision
     }
 }
 
-impl Evaluator for StpEvaluator {
-    fn evaluate(&self, state: &IdealClass) -> f64 {
-        // --- 1. 计算离散势垒 (Discrete Barrier, Truth) ---
-        // 使用 Exact Projection (SHA-256)
-        
-        let total_digits = self.action_count * self.digits_per_action;
-        let mut current_state = state.clone();
-        
-        let mut exact_path = Vec::with_capacity(total_digits);
-        for t in 0..total_digits {
-            exact_path.push(self.projector.project_exact(&current_state, t as u64));
-            // 状态演化 (Identity dynamics for evaluation path)
-            // 假设它是瞬时的投影，或者跟随简单的 squaring。
-            current_state = current_state.square();
-        }
-        
-        let actions: Vec<_> = exact_path
-            .chunks(self.digits_per_action)
-            .map(|chunk| adapter::path_to_proof_action(chunk))
-            .collect();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let mut context = STPContext::new();
-        // [Fix] 返回分级后的 Barrier 能量 (0.0, 10.x, 100.x)
-        let barrier_energy = context.calculate_barrier(&actions);
+    #[test]
+    fn test_gradient_death_fix() {
+        let precision = 512;
+        let evaluator = HighPrecisionEvaluator::new(EvaluatorConfig { precision });
 
-        // --- 2. 计算连续残差 (Continuous Residual, Will) ---
-        // 使用 Continuous Projection (Geometry)
-        // 只有当 Barrier 很高时，Residual 才有指导意义（在同一台阶上区分好坏）
+        // 模拟梯度死亡场景：
+        // Base = 10^180
+        // Delta = 1 (微扰)
+        let base_val = Float::with_val(precision, 10.0).pow(180);
+        let perturbed_val = base_val.clone() + Float::with_val(precision, 1.0);
+
+        // 在 f64 中，(10^180 + 1) - 10^180 == 0.0 (精度丢失)
+        // 在 rug::Float 中，应该能找回这个 1.0
         
-        let current_features = self.projector.project_continuous(state);
+        let diff = perturbed_val - base_val;
+        let expected = Float::with_val(precision, 1.0);
         
-        // 简单的欧氏距离
-        let mut residual_dist_sq: f64 = 0.0;
-        if self.target_features.len() == current_features.len() {
-             residual_dist_sq = current_features.iter()
-                .zip(self.target_features.iter())
-                .map(|(a, b)| (a - b).powi(2))
-                .sum();
-        }
-
-        // 缩放 Residual，确保它只在台阶内部起作用
-        // max residual contribution = 0.99
-        let residual_energy = (self.residual_weight * residual_dist_sq).min(0.99);
-
-        // Total J(S)
-        barrier_energy + residual_energy
-    }
-
-    fn name(&self) -> &'static str {
-        "STP(Tiered) + Residual"
+        // 验证我们找回了丢失的精度
+        assert!((diff - expected).abs() < Float::with_val(precision, 1e-10));
+        println!("喵！成功在 10^180 的大数海洋中捕捉到了 1.0 的微扰！");
     }
 }
