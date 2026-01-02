@@ -1,115 +1,155 @@
-use crate::will::evaluator::Evaluator;
-use crate::will::perturber::Perturber; // [Modified] Perturber is now a concrete struct or trait we use directly
-use crate::will::ricci::RicciFlow;    // [New] Import Ricci Flow
-use crate::soul::algebra::IdealClass;
+use crate::soul::algebra::{IdealClass, Topology};
+use crate::dsl::stp_bridge::{StpBridge, HamiltonianState};
+use crate::body::projection::FeatureVector;
+use crate::will::perturber::Perturber;
 
-/// Valuation-Adaptive Perturbation Optimizer (VAPO)
-/// 
-/// Updated with Topological Amendment (v2.3):
-/// Now traverses the Conformal Manifold (V, d_Ricci) instead of the raw Cayley Graph.
-pub struct VapoOptimizer {
-    evaluator: Box<dyn Evaluator>,
-    perturber: Perturber, // [Explicit] We need direct access to perturber for lookahead
-    search_steps: usize,
-    
-    // [New] The Geometry Engine
-    ricci_engine: RicciFlow,
+/// Strategies for evolution
+pub enum Strategy {
+    /// Classic "Energy Only" mode (Deprecated)
+    Greedy,
+    /// Valuation-Adaptive Perturbation (Legacy)
+    ValuationAdaptive,
+    /// Augmented Lagrangian Method (Primal-Dual)
+    Paraconsistent,
 }
 
-impl VapoOptimizer {
-    pub fn new(evaluator: Box<dyn Evaluator>, search_steps: usize, p: u64) -> Self {
-        // Initialize Perturber with standard generating set (assumed logic)
-        let perturber = Perturber::new_standard(p);
-        
-        Self {
-            evaluator,
-            perturber,
-            search_steps,
-            // Sensitivity = 2.0 意味着对负曲率非常敏感
-            ricci_engine: RicciFlow::new(2.0, p), 
+pub struct Optimizer {
+    strategy: Strategy,
+    target: FeatureVector,
+    
+    // ALM Hyperparameters
+    rho: f64, // Penalty Stiffness
+    mu: f64,  // L1 Regularization (Compromise cost)
+    
+    // State Variables
+    multipliers: Vec<f64>, // Lambda (Shadow Prices)
+    slacks: Vec<f64>,      // Xi (Allowed Violations)
+}
+
+#[derive(Debug)]
+pub enum EvolutionResult {
+    VerifiedSuccess(Vec<IdealClass>),
+    CompromisedSuccess(Vec<IdealClass>, Vec<f64>), // Returns trace + slack values
+    ValidFailure(Vec<IdealClass>, f64),
+}
+
+impl Optimizer {
+    pub fn new() -> Self {
+        Optimizer {
+            strategy: Strategy::Paraconsistent,
+            target: vec![], // Should be set by builder
+            rho: 1.0,
+            mu: 0.1, // Cost of compromising an axiom
+            multipliers: vec![0.0; 10], // Default capacity
+            slacks: vec![0.0; 10],
         }
     }
 
-    /// 执行搜索 (The Walk of Will)
-    /// 
-    /// Returns: (Best State, Trace Path)
-    pub fn search(&self, seed: &IdealClass) -> (IdealClass, Vec<String>) {
-        let mut current_state = seed.clone();
-        let mut current_energy = self.evaluator.evaluate(&current_state);
-        let mut trace = Vec::new();
+    pub fn target(mut self, t: FeatureVector) -> Self {
+        self.target = t;
+        self
+    }
 
-        println!("Starting VAPO Search on Ricci-Flowed Manifold...");
-        println!("Initial Energy: {:.4}", current_energy);
+    /// The Main Loop: Primal-Dual Evolution
+    pub fn evolve(&mut self, start_node: IdealClass, _topology: Topology) -> EvolutionResult {
+        let mut current_state = start_node;
+        let mut trace = vec![current_state.clone()];
+        
+        let max_epochs = 100;
+        let inner_steps = 20; // VAPO steps per ALM update
 
-        for step in 0..self.search_steps {
-            if current_energy.abs() < 1e-6 {
-                println!("Convergence reached at step {}", step);
-                break;
-            }
+        // Initialize Dual/Slack vectors based on initial evaluation
+        let initial_h = StpBridge::calculate_hamiltonian(
+            &current_state, 
+            &self.target, 
+            &[], 
+            &[], 
+            self.rho, 
+            self.mu
+        );
+        let num_constraints = initial_h.raw_residuals.len();
+        self.multipliers = vec![0.0; num_constraints];
+        self.slacks = vec![0.0; num_constraints];
 
-            // 1. 获取候选邻居 (Perturbations)
-            let candidates = self.perturber.generate_candidates(&current_state);
-            
-            // 2. 评估候选者 (Evaluation Loop)
-            // 这里我们不仅计算能量 E，还计算有效梯度 \nabla_{eff}
-            let mut best_candidate = None;
-            let mut min_effective_energy = f64::MAX;
-            let mut selected_move_name = String::new();
+        for epoch in 0..max_epochs {
+            // --- Step 1: Primal Update (The Will) ---
+            // Minimize L(S, fixed_lambda, fixed_xi) for S
+            for _ in 0..inner_steps {
+                let perturbation = Perturber::propose(&current_state);
+                let candidate = current_state.compose(&perturbation);
 
-            for (move_name, candidate_state) in candidates {
-                // A. 原始能量 (Truth)
-                let raw_energy = self.evaluator.evaluate(&candidate_state);
+                let current_h = StpBridge::calculate_hamiltonian(
+                    &current_state, &self.target, &self.multipliers, &self.slacks, self.rho, self.mu
+                );
                 
-                // B. 曲率计算 (Stability)
-                // 计算从 current 到 candidate 这条边的曲率
-                let kappa = self.ricci_engine.calculate_curvature(
-                    &current_state, 
-                    &candidate_state, 
-                    &self.perturber
+                let candidate_h = StpBridge::calculate_hamiltonian(
+                    &candidate, &self.target, &self.multipliers, &self.slacks, self.rho, self.mu
                 );
 
-                // C. 度量修正 (The Amendment)
-                // E_eff = E_raw + Penalty(\kappa)
-                let curvature_penalty = self.ricci_engine.compute_penalty(kappa);
-                let effective_energy = raw_energy + curvature_penalty;
-
-                // Debug log for critical decisions
-                if step % 10 == 0 && effective_energy < current_energy {
-                    println!("  Option [{}]: E={:.4}, k={:.4}, E_eff={:.4}", 
-                        move_name, raw_energy, kappa, effective_energy);
-                }
-
-                if effective_energy < min_effective_energy {
-                    min_effective_energy = effective_energy;
-                    best_candidate = Some(candidate_state);
-                    selected_move_name = move_name;
+                // Metropolis-like acceptance or Greedy descent
+                if candidate_h.total_energy < current_h.total_energy {
+                    current_state = candidate;
+                    trace.push(current_state.clone());
+                    
+                    // Early exit if perfect
+                    if candidate_h.raw_residuals.iter().all(|&r| r < 1e-6) {
+                        return EvolutionResult::VerifiedSuccess(trace);
+                    }
                 }
             }
 
-            // 3. 状态更新 (Transition)
-            // 只有当有效能量下降时才移动 (Hill Climbing on Ricci Manifold)
-            // 注意：这里我们比较的是 effective_energy，即使 raw_energy 降低了，
-            // 如果曲率是极负的（陷阱），effective_energy 可能会很高，从而阻止移动。
-            if let Some(next_state) = best_candidate {
-                // 计算当前状态的有效能量作为基准（近似）
-                let current_kappa_est = 0.0; // 原地不动曲率为0
-                let current_eff = current_energy + self.ricci_engine.compute_penalty(current_kappa_est);
+            // Get the state after Primal optimization
+            let h_star = StpBridge::calculate_hamiltonian(
+                &current_state, &self.target, &self.multipliers, &self.slacks, self.rho, self.mu
+            );
 
-                if min_effective_energy < current_eff {
-                    current_state = next_state;
-                    // 更新 current_energy 为真实的原始能量，用于下一次迭代判断收敛
-                    current_energy = self.evaluator.evaluate(&current_state);
-                    trace.push(selected_move_name.clone());
-                } else {
-                    // Local Minima on Ricci Manifold
-                    // 可能需要模拟退火或随机重启 (未实现)
-                    break;
-                }
-            } else {
-                break;
+            // --- Step 2: Slack Update (The Compromise) ---
+            // Closed form solution for min_xi ( lambda*(C-xi) + rho/2*||C-xi||^2 + mu*||xi||_1 )
+            // This is effectively a soft-thresholding operator
+            for i in 0..num_constraints {
+                let c_val = h_star.raw_residuals[i];
+                let lambda_val = self.multipliers[i];
+                
+                // The "Force" pushing for a slack variable is (rho * C + lambda)
+                // We shrink it by mu
+                let input = c_val + lambda_val / self.rho;
+                let threshold = self.mu / self.rho;
+                
+                // Soft Thresholding: sign(x) * max(|x| - thresh, 0)
+                // However, since C(S) >= 0 typically, we check if we need positive slack.
+                // Logic: We want to match C(S) approx xi.
+                // If C(S) is large, xi should be large to reduce the quadratic penalty,
+                // but mu penalizes large xi.
+                
+                // Simplified update logic for demonstration:
+                // xi = relu( C(S) + lambda/rho - mu/rho )
+                // If the violation pressure is higher than the compromise cost (mu), we yield.
+                self.slacks[i] = (input - threshold).max(0.0);
             }
+
+            // --- Step 3: Dual Update (The Judgment) ---
+            // lambda = lambda + rho * (C(S) - xi)
+            for i in 0..num_constraints {
+                let c_val = h_star.raw_residuals[i];
+                let xi_val = self.slacks[i];
+                self.multipliers[i] += self.rho * (c_val - xi_val);
+            }
+
+            // Annealing / Dynamics adjustment
+            self.rho *= 1.05; // Gradually stiffen the penalties
         }
 
-        (current_state, trace)
+        // Final Check
+        let final_h = StpBridge::calculate_hamiltonian(
+            &current_state, &self.target, &self.multipliers, &self.slacks, self.rho, self.mu
+        );
+
+        // If we have non-zero slacks but converged, it's a Compromised Success
+        let total_slack: f64 = self.slacks.iter().sum();
+        if total_slack > 0.0 {
+            return EvolutionResult::CompromisedSuccess(trace, self.slacks.clone());
+        }
+
+        EvolutionResult::ValidFailure(trace, final_h.total_energy)
     }
 }
