@@ -1,87 +1,106 @@
-# Evolver: A Formally Verifiable Evolutionary Solver
+# Evolver: The Algebraic Logic Generator
 
-"Empower mathematical models with an evolutionary will."
+> "Logic is not corrected; it is evolved."
 
-Evolver is a universal system evolution framework based on **Semi-Tensor Product (STP)**. It models complex system dynamics as rigorous algebraic structures and utilizes valuation-adaptive perturbation algorithms to find optimal evolution paths within topological spaces.
+Evolver is a native algebraic logic generation engine based on the **Semi-Tensor Product (STP)** and **Ideal Class Groups of Imaginary Quadratic Fields**.
 
-Unlike traditional black-box optimizers, Evolver emphasizes **Formal Verifiability**.
+Unlike traditional "black-box" Large Language Models (LLMs), Evolver does not predict probabilities. Instead, it directly "grows" truth paths that satisfy logical constraints through **Valuation-Adaptive Perturbation Optimization (VAPO)** searches within rigorous algebraic structures.
 
----
-
-## Core Philosophy
-
-### 1. The Trinity Architecture
-Evolver decouples systems into three orthogonal dimensions:
-
-* **Body (Structure):** Defines the topological space and state representation of the system. It is the carrier of evolution.
-* **Soul (Laws):** Defines the dynamical rules and constraints of the system. Based on STP algebra, it ensures the **Logical Soundness** of system evolution.
-* **Will (Intent):** Defines the direction of evolution. Through **Valuation-adaptive Perturbation (v-PuNNs)**, it conducts purposeful exploration within the solution space.
-
-### 2. Trust Model
-We do not promise "Correct-by-Construction" for semantic logic. Instead, we provide a rigorous **Algebraic Trust Model**:
-
-* **Algebraic Soundness:** Every step of the system's evolution strictly follows predefined group laws. The system is guaranteed to remain in a valid algebraic state (an element of $Cl(\Delta)$), ensuring no structural corruption occurs.
-* **Verifiability:** The system’s evolutionary path generates a cryptographically secure **Trace**. Third parties can mathematically verify that the result was produced by a valid walk on the **Cayley Graph**, not hallucinated.
-* **Verified-by-Search:** Semantic correctness (Truth) is the objective of the optimization process ($E \to 0$), not an intrinsic property of the generation mechanism.
+We do not promise "Correct-by-Construction"; we offer a higher-level guarantee — **Verified-by-Search**.
 
 ---
 
-## Installation & Usage
+## Core Philosophy: The Trinity
+
+Evolver's architecture mimics the forms of life, decoupling the system into three orthogonal dimensions (corresponding to the code structure):
+
+### 1. Soul: Algebraic Laws (`src/soul`)
+* **Mathematical Entity**: Ideal Class Group $Cl(\Delta)$ of an imaginary quadratic field.
+* **Role**: Defines the physical laws of the system. Regardless of how the state evolves, it remains a valid group element, ensuring **Algebraic Soundness**.
+* **Characteristics**: A discrete, vast Cayley graph with deterministic chaotic features.
+
+### 2. Will: Evolutionary Dynamics (`src/will`)
+* **Core Algorithm**: VAPO (Valuation-Adaptive Perturbation Optimization).
+* **Role**: Drives the system's movement across the group manifold, replacing traditional gradient descent.
+* **Structural Jumps**: Uses prime ideals with large norms for coarse-grained searching.
+* **Fine-tuning**: Uses prime ideals with small norms for local optimization.
+* **Objective**: To find states where the unified energy $J(S) \to 0$.
+
+### 3. Body: Topological Manifestation (`src/body`)
+* **Mechanism**: Dual Projection.
+    * $\Psi_{topo}$ (Lipschitz): Provides geometric intuition and a sense of "gradient" for the Will.
+    * $\Psi_{exact}$ (Hash): Collapses the algebraic state into a unique, unforgeable code/logic path.
+* **Result**: Even minute logical differences correspond to distinct geometric locations at the algebraic source.
+
+---
+
+## Quick Start
 
 ### Prerequisites
-Evolver is built with **Rust**. Please ensure your local environment has the Rust toolchain (1.70+) installed.
-
-### Building the Project
-As this is private proprietary software, please ensure you have the necessary access permissions for the source code.
+Evolver is a high-performance Rust project.
 
 ```bash
-# Enter project root
-cd evolver
+rustc --version  # Requires 1.70+
+```
 
-# Build release version
+### Build
+```bash
 cargo build --release
 ```
 
-### Example: Defining a Simple Boolean Network
-
+### Example: Evolving a Logic XOR Gate
 ```rust
-// Define state space (Body)
-let topology = Topology::new(2); // 2-node network
+use evolver::prelude::*;
 
-// Define dynamical rules (Soul)
-// Use STP Bridge to compile logical rules into algebraic matrices
-let rules = StpBridge::compile("x1(t+1) = x1(t) AND x2(t)");
+fn main() {
+    // 1. Define the Body: A boolean network with 2 inputs and 1 output
+    let topology = Topology::new(2, 1);
 
-// Inject Will
-// Goal: Find a path that converges to a fixed point
-let optimizer = Optimizer::new()
-    .with_strategy(Strategy::ValuationAdaptive)
-    .target(Energy::Zero);
+    // 2. Define the Soul: Compile logical constraints (STP)
+    // Constraint: Output is 1 when inputs differ; otherwise 0
+    let constraints = StpBridge::compile("y = x1 XOR x2");
 
-let result = optimizer.evolve(topology, rules);
+    // 3. Inject the Will: Configure the VAPO optimizer
+    let optimizer = Optimizer::new()
+        .strategy(Strategy::ValuationAdaptive)
+        .max_epochs(1000)
+        .target(Energy::Zero);
 
-match result {
-    VerifiedSuccess(trace) => println!("Evolution successful: {:?}", trace),
-    ValidFailure(trace, energy) => println!("Converged to local optima, E={}", energy),
-    _ => println!("Evolution failed"),
+    println!("Evolving logic from algebraic void...");
+
+    // 4. Begin Evolution
+    match optimizer.evolve(topology, constraints) {
+        EvolutionResult::VerifiedSuccess(trace) => {
+            println!("✨ Truth path discovered!");
+            println!("Algebraic Seed: {:?}", trace.seed);
+            println!("Proof Hash: {}", trace.proof_hash);
+        },
+        EvolutionResult::ValidFailure(trace, energy) => {
+            println!("⚠️ Trapped in local optimum (E={:.4})", energy);
+            println!("Certificate of Cognitive Dissonance: {:?}", trace.compromise);
+        }
+    }
 }
 ```
 
 ---
 
-## Theoretical Foundations
-The core engine of Evolver is built upon the following mathematical theories:
+## Theoretical Foundation
 
-* **Semi-Tensor Product of Matrices:** Enables operations between matrices of different dimensions, unifying logic and algebra.
-* **Valuation-Adaptive Perturbation:** An adaptive search strategy based on the geometric features of the energy landscape.
-* **Topological Dynamics:** Dynamical systems defined on manifolds or graph structures.
+Evolver’s core engine is built upon the following mathematical pillars:
 
-For detailed mathematical derivations, please refer to the internal technical documentation in the `theory/` directory.
+* **Semi-Tensor Product (STP)**: Transforms logical operations into matrix multiplications, enabling the algebraization of logic.
+* **Algebraic Number Theory**: Leverages the hardness of the discrete logarithm problem in class groups as the state space.
+* **Topological Dynamics**: Utilizes the geometric properties of manifolds to guide discrete searches.
+
+For detailed derivations, please refer to the whitepaper in the `theory/` directory.
 
 ---
 
-## Copyright & License
-**M-Patek PROPRIETARY LICENSE**
-Copyright © 2025 M-Patek.
+## License
 
-This project is **Proprietary Software**. Unauthorized copying, distribution, modification, or commercial use of any part of this software without explicit written permission from the copyright owner is strictly prohibited. This software contains legally protected trade secrets.
+**M-Patek PROPRIETARY LICENSE**
+
+Copyright © 2025 M-Patek. All Rights Reserved.
+
+This software contains trade secrets protected by law. Unauthorized copying, distribution, or commercial use is strictly prohibited.
